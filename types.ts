@@ -72,6 +72,10 @@ export interface TestPlan {
   tools?: string;
   suites: TestSuite[];
   groundingSources?: { uri: string; title: string }[];
+  authAnalysis?: {
+    used: boolean;
+    message: string;
+  };
 }
 
 export interface GenerateOptions {
@@ -83,7 +87,7 @@ export interface SavedSession {
   name: string;
   timestamp: number;
   url: string;
-  plan: TestPlan;
+  plan: TestPlan | null;
   testData: TestDataItem[];
   requirements: TestRequirementsAnalysis | null;
   artifactScope: ArtifactScope;

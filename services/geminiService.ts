@@ -50,7 +50,8 @@ export const analyzeRequirements = async (url: string, knownKeys?: string[]): Pr
     4. Return a list of these requirements. Mark any potentially sensitive fields (Password, Credit Card, API Key, PII) as "isSensitive": true.
     5. **GROUPING**: Group these requirements logically by the page or feature they belong to (e.g., "Login", "Registration", "Checkout", "Profile").
     6. **INPUT TYPES**:
-       - If a field usually has multiple standard options (e.g. "Social Login Provider" -> Google, Facebook; "Role" -> Admin, User), provide an "options" array.
+       - If a field usually has multiple standard options (e.g. "Role" -> Admin, User), provide an "options" array.
+       - **SOCIAL LOGIN**: If you identify a "Social Login Provider" field (or similar), YOU MUST ALWAYS include "Email (use provided credentials)" as the first option in the "options" array, followed by others like Google, Facebook, etc.
        - If a field is a simple interaction like a checkbox, toggle, or button click (e.g. "Accept Terms", "Click Submit"), set "inputType": "boolean".
     
     ${knownKeysPrompt}
@@ -66,7 +67,7 @@ export const analyzeRequirements = async (url: string, knownKeys?: string[]): Pr
           "description": "Short explanation of usage", 
           "suggestedValue": "Optional example value",
           "isSensitive": boolean,
-          "options": ["Option 1", "Option 2"], // Optional array of strings
+          "options": ["Email (use provided credentials)", "Google", "Facebook"], // Example
           "inputType": "text" | "select" | "boolean" // Optional
         }
       ]
@@ -101,14 +102,15 @@ export const generateTestPlan = async (url: string, userTestData: TestDataItem[]
   );
 
   const authInstructions = hasCredentials 
-    ? `**CRITICAL: LOGIN CONTEXT DETECTED**
-       The user has provided login credentials (username, password, etc.) in the 'testData'. 
-       You MUST assume the role of an AUTHENTICATED USER.
-       - Go BEYOND public pages.
-       - Generate deep functionality tests for protected areas (e.g., User Profile, Settings, Order History, Dashboard).
-       - Create specific test cases that verify the login process itself using the provided data.
-       - Create test cases that verify session management.
-       - **CROSS-DOMAIN JUMPS**: If logging in redirects to a different subdomain (e.g. dashboard.vcam.ai), explicitly include test cases for that domain.`
+    ? `**CRITICAL: LOGIN CREDENTIALS PROVIDED**
+       The user has provided login credentials (username, password, etc.) in the 'testData'.
+       
+       **MANDATORY ACTION**:
+       1. You MUST generate a specialized Test Suite named "Authentication Verification" as the **VERY FIRST** suite.
+       2. The first Test Case in this suite MUST be "Verify Login with Provided User Credentials".
+       3. This test case should explicitly simulate the login flow: entering the provided username/password and verifying successful redirection to a dashboard or protected area.
+       4. After verifying login, assume the role of an AUTHENTICATED USER for subsequent suites (e.g., User Profile, Settings, Order History).
+       5. **CROSS-DOMAIN JUMPS**: If logging in redirects to a different subdomain (e.g. dashboard.vcam.ai), explicitly include test cases for that domain.`
     : `Note: No specific login credentials were detected. Focus primarily on public-facing functionality. However, if the site is a landing page for an app, verify that the "Login" or "Get Started" buttons correctly redirect to the application domain.`;
 
   const scopeInstructions = {
@@ -150,6 +152,7 @@ export const generateTestPlan = async (url: string, userTestData: TestDataItem[]
     - **SECURITY**: Ensure sensitive fields are marked correctly in the output.
     - **OBSERVATIONS**: In the 'testDataObservations' field of the suite, list which test data keys were used and which failed or were not applicable.
     - **PRECONDITIONS**: **MANDATORY**: The 'preconditions' field for EVERY test case MUST include "Navigate to ${url}" (or the specific deep-link URL if relevant) as the first precondition.
+    - **AUTH ANALYSIS**: Determine if the provided credentials (if any) were likely sufficient to generate authenticated scenarios. Fill the 'authAnalysis' field.
     
     Output Format:
     You MUST return the result as a strict JSON object. Do not include conversational filler outside the JSON code block.
@@ -162,6 +165,10 @@ export const generateTestPlan = async (url: string, userTestData: TestDataItem[]
       "scope": "What is in-scope and out-of-scope",
       "risks": "Potential project or product risks",
       "tools": "Suggested tools (e.g., Selenium, AXE, Burp Suite)",
+      "authAnalysis": {
+         "used": boolean, // true if authenticated scenarios were generated using provided data
+         "message": "Short message explaining if the login info worked or why it was skipped."
+      },
       "suites": [
         {
           "suiteName": "Name of the suite",
@@ -231,13 +238,13 @@ export const generateTestPlan = async (url: string, userTestData: TestDataItem[]
   }
 };
 
-export const generateMoreTestCases = async (url: string, suite: TestSuite, userTestData: TestDataItem[], focusType?: string): Promise<TestCase[]> => {
+export const generateMoreTestCases = async (url: string, suite: TestSuite, userTestData: TestDataItem[], focusType?: string, count: number = 3): Promise<TestCase[]> => {
   const ai = getAiClient();
 
   const existingIds = suite.cases.map(c => c.id).join(', ');
   const focusInstruction = focusType 
-    ? `**CRITICAL FOCUS**: The user explicitly requested ONLY "${focusType}" test cases. Generate 3-5 cases that strictly fall under the category of ${focusType}.`
-    : `Generate 3-5 NEW, UNIQUE test cases for this suite that are NOT already covered. Look for "Negative", "Boundary", or "Accessibility" scenarios.`;
+    ? `**CRITICAL FOCUS**: The user explicitly requested ONLY "${focusType}" test cases. Generate EXACTLY ${count} cases that strictly fall under the category of ${focusType}.`
+    : `Generate EXACTLY ${count} NEW, UNIQUE test cases for this suite that are NOT already covered. Look for "Negative", "Boundary", or "Accessibility" scenarios.`;
 
   const prompt = `
     You are an expert QA Engineer.
@@ -255,8 +262,10 @@ export const generateMoreTestCases = async (url: string, suite: TestSuite, userT
     ${focusInstruction}
     
     Requirements:
+    - Generate EXACTLY ${count} test cases.
     - Do NOT duplicate existing cases.
     - Classify each with "scenarioType".
+    - **STEPS**: You MUST generate detailed test steps (action, expected) for every test case. Do not return empty steps.
     - **PRECONDITIONS**: Must include "Navigate to ${url}" (or relevant page).
     - **ID PATTERN**: You MUST follow the ID pattern of the existing cases. If existing IDs are "AUTH-001", "AUTH-002", then your new cases MUST be "AUTH-003", "AUTH-004", etc. Do NOT use generic IDs like "TC-NEW-001" unless the existing ones are also generic.
     
@@ -272,7 +281,10 @@ export const generateMoreTestCases = async (url: string, suite: TestSuite, userT
         "scenarioType": "Positive" | "Negative" | "Boundary",
         "priority": "...",
         "testData": [],
-        "steps": []
+        "steps": [
+           { "stepNumber": 1, "action": "Click Login button", "expected": "Login modal appears" },
+           { "stepNumber": 2, "action": "Enter invalid credentials", "expected": "Error message displayed" }
+        ]
       }
     ]
   `;
@@ -292,9 +304,9 @@ export const generateMoreTestCases = async (url: string, suite: TestSuite, userT
     
     // Ensure it's an array
     if (Array.isArray(newCases)) {
-      return newCases;
+      return newCases.slice(0, count);
     } else if (newCases.cases && Array.isArray(newCases.cases)) {
-      return newCases.cases;
+      return newCases.cases.slice(0, count);
     }
     return [];
   } catch (error) {

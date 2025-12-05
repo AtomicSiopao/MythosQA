@@ -103,22 +103,20 @@ const TestDataForm: React.FC<TestDataFormProps> = ({ requirements, initialData, 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Add as a custom field with a generic value indicator
-      // In a real app with backend, we would upload this. 
-      // Here we store the reference name so Gemini knows a file is available.
       setCustomFields([...customFields, { 
         key: `Media: ${file.name}`, 
         value: `[FILE_UPLOADED type=${file.type} size=${(file.size/1024).toFixed(1)}kb]`, 
         isSensitive: false 
       }]);
     }
-    // Reset inputs
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // Group requirements by 'group' field
+  // Group requirements by 'group' field, prioritizing Login/Auth groups
   const groupedRequirements = React.useMemo<Record<string, number[]>>(() => {
     const groups: Record<string, number[]> = {};
+    const priorityKeywords = ['login', 'authentication', 'auth', 'credential', 'sign in'];
+    
     requirements.forEach((req, idx) => {
       const groupName = req.group || 'General Requirements';
       if (!groups[groupName]) {
@@ -126,8 +124,22 @@ const TestDataForm: React.FC<TestDataFormProps> = ({ requirements, initialData, 
       }
       groups[groupName].push(idx);
     });
+    
     return groups;
   }, [requirements]);
+
+  const sortedGroupKeys = React.useMemo(() => {
+    return Object.keys(groupedRequirements).sort((a, b) => {
+      const aLower = a.toLowerCase();
+      const bLower = b.toLowerCase();
+      const isAPriority = /login|auth|credential|sign in/i.test(aLower);
+      const isBPriority = /login|auth|credential|sign in/i.test(bLower);
+
+      if (isAPriority && !isBPriority) return -1;
+      if (!isAPriority && isBPriority) return 1;
+      return 0; // Keep original order otherwise
+    });
+  }, [groupedRequirements]);
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8 animate-fade-in">
@@ -146,7 +158,7 @@ const TestDataForm: React.FC<TestDataFormProps> = ({ requirements, initialData, 
 
         <form onSubmit={handleSubmit} className="p-6 space-y-8">
           
-          {/* 1. Artifact Selection (MOVED TO TOP) */}
+          {/* 1. Artifact Selection */}
           <div className="space-y-3 pb-6 border-b border-slate-100 dark:border-slate-800">
              <h3 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Output Artifact</h3>
              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -213,12 +225,15 @@ const TestDataForm: React.FC<TestDataFormProps> = ({ requirements, initialData, 
           </div>
 
           {/* 2. Detected Requirements Grouped */}
-          {formData.length > 0 && Object.entries(groupedRequirements).map(([groupName, indices]) => (
+          {formData.length > 0 && sortedGroupKeys.map((groupName) => (
             <div key={groupName} className="space-y-4">
-               <h3 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800 pb-2">
+               <h3 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800 pb-2 flex items-center">
                  {groupName}
+                 {/login|auth|credential/i.test(groupName) && (
+                   <span className="ml-2 text-[10px] bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400 px-1.5 py-0.5 rounded-full font-bold">PRIORITY</span>
+                 )}
                </h3>
-               {(indices as number[]).map(idx => {
+               {groupedRequirements[groupName].map(idx => {
                   const field = formData[idx];
                   const req = requirements[idx];
                   const isBoolean = req.inputType === 'boolean';
@@ -256,17 +271,12 @@ const TestDataForm: React.FC<TestDataFormProps> = ({ requirements, initialData, 
                                    {req.options?.map((opt, optIdx) => (
                                      <option key={optIdx} value={opt}>{opt}</option>
                                    ))}
-                                   {/* If current value is not in options (e.g. custom from previous session), add it */}
                                    {field.value && !req.options?.includes(field.value) && (
                                      <option value={field.value}>{field.value}</option>
                                    )}
                                 </select>
-                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-700 dark:text-slate-400">
-                                   <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
-                                </div>
                             </div>
                           ) : (
-                            // Standard Text Input
                             <div className="relative">
                                 <input
                                     type={field.isSensitive ? "password" : "text"}
@@ -330,7 +340,7 @@ const TestDataForm: React.FC<TestDataFormProps> = ({ requirements, initialData, 
                         onChange={(e) => handleCustomKeyChange(idx, e.target.value)}
                         className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500 transition-colors"
                         placeholder="Field Name"
-                        readOnly={field.key.startsWith("Media:")} // Prevent editing media keys manually
+                        readOnly={field.key.startsWith("Media:")}
                       />
                    </div>
                    <div className="flex-1 w-full relative">
@@ -340,7 +350,7 @@ const TestDataForm: React.FC<TestDataFormProps> = ({ requirements, initialData, 
                         onChange={(e) => handleChange(idx, e.target.value, true)}
                         className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 transition-colors"
                         placeholder={field.isSensitive ? "Hidden Value" : "Value"}
-                        readOnly={field.key.startsWith("Media:")} // Prevent editing media values
+                        readOnly={field.key.startsWith("Media:")}
                       />
                       {!field.key.startsWith("Media:") && (
                         <button
@@ -382,15 +392,7 @@ const TestDataForm: React.FC<TestDataFormProps> = ({ requirements, initialData, 
                className="px-8 py-2.5 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 shadow-lg hover:shadow-xl transition-all flex items-center disabled:bg-blue-400"
                disabled={isLoading}
              >
-               {isLoading ? (
-                  <>
-                     <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                     </svg>
-                     Generating Plan...
-                  </>
-               ) : "Generate"}
+               {isLoading ? "Generating Plan..." : "Generate"}
              </button>
           </div>
         </form>

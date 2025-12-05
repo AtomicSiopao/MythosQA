@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { TestPlan, TestSuite, TestCase, TestPriority, TestType, TestDataItem, SavedSession } from '../types';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
@@ -8,9 +9,10 @@ interface TestPlanDisplayProps {
   plan: TestPlan;
   onReset: () => void;
   onEditConfig: () => void;
-  onGenerateMore: (suiteIndex: number, focusType?: string) => void;
+  onGenerateMore: (suiteIndex: number, focusType?: string, count?: number) => void;
   onUpdatePlan: (plan: TestPlan) => void;
   onRegenerateCase: (suiteIndex: number, caseIndex: number, newTestData: TestDataItem[]) => Promise<void>;
+  onUpdateTestCase: (suiteIndex: number, caseIndex: number, updatedCase: TestCase) => void;
   generatingMoreSuiteIndex: number | null;
   onSaveSession: (name: string) => void;
 }
@@ -56,22 +58,66 @@ interface TestCaseRowProps {
   websiteUrl: string;
   onOpenRegenerate: (suiteIndex: number, caseIndex: number, currentData: TestDataItem[]) => void;
   onGenerateScript: (testCase: TestCase) => void;
+  onUpdate: (suiteIndex: number, caseIndex: number, updatedCase: TestCase) => void;
 }
 
-const TestCaseRow: React.FC<TestCaseRowProps> = ({ testCase, suiteIndex, caseIndex, websiteUrl, onOpenRegenerate, onGenerateScript }) => {
+const getPartiallyMaskedValue = (key: string, value: string) => {
+  if (!value) return '';
+  const lowerKey = key.toLowerCase();
+  
+  // Strict masking for passwords
+  if (lowerKey.includes('password') || lowerKey.includes('secret') || lowerKey.includes('token')) {
+    return '••••••••'; 
+  }
+  
+  // Partial masking for Credit Cards (Show last 4)
+  if (lowerKey.includes('card') || lowerKey.includes('cc')) {
+    return `•••• ${value.slice(-4)}`;
+  }
+
+  // General partial masking for others (Show first 1, last 2)
+  if (value.length > 5) {
+    return `${value.slice(0, 1)}••••${value.slice(-2)}`;
+  }
+
+  return '••••••';
+};
+
+const TestCaseRow: React.FC<TestCaseRowProps> = ({ testCase, suiteIndex, caseIndex, websiteUrl, onOpenRegenerate, onGenerateScript, onUpdate }) => {
   const [expanded, setExpanded] = useState(false);
 
+  // Masking purely for display in non-editable views if needed
   const maskSensitiveText = (text: string) => {
     if (!testCase.testData) return text;
     let masked = text;
     testCase.testData.forEach(item => {
       if (item.isSensitive && item.value && item.value.length > 0) {
         if (item.value.length >= 3) {
-           masked = masked.split(item.value).join('••••••');
+           const replacement = getPartiallyMaskedValue(item.key, item.value);
+           // Replace all occurrences
+           masked = masked.split(item.value).join(replacement);
         }
       }
     });
     return masked;
+  };
+
+  const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onUpdate(suiteIndex, caseIndex, { ...testCase, title: e.target.value });
+  };
+
+  const handleDescriptionChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    onUpdate(suiteIndex, caseIndex, { ...testCase, description: e.target.value });
+  };
+  
+  const handlePreconditionsChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    onUpdate(suiteIndex, caseIndex, { ...testCase, preconditions: e.target.value });
+  };
+
+  const handleStepChange = (stepIdx: number, field: 'action' | 'expected', value: string) => {
+    const newSteps = [...testCase.steps];
+    newSteps[stepIdx] = { ...newSteps[stepIdx], [field]: value };
+    onUpdate(suiteIndex, caseIndex, { ...testCase, steps: newSteps });
   };
 
   return (
@@ -86,7 +132,16 @@ const TestCaseRow: React.FC<TestCaseRowProps> = ({ testCase, suiteIndex, caseInd
           <TypeBadge type={testCase.type} />
           <ScenarioBadge scenario={testCase.scenarioType} />
         </td>
-        <td className="px-4 py-3 text-sm font-medium text-slate-800 dark:text-slate-200">{testCase.title}</td>
+        <td className="px-4 py-3">
+           <input 
+              type="text" 
+              value={testCase.title}
+              onChange={handleTitleChange}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full bg-transparent border-none focus:ring-0 p-0 text-sm font-medium text-slate-800 dark:text-slate-200 placeholder-slate-400"
+              placeholder="Test Case Title"
+           />
+        </td>
         <td className="px-4 py-3 text-right">
           <svg className={`w-5 h-5 text-slate-400 transform transition-transform ${expanded ? 'rotate-180' : ''} inline-block`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -98,8 +153,16 @@ const TestCaseRow: React.FC<TestCaseRowProps> = ({ testCase, suiteIndex, caseInd
           <td colSpan={5} className="px-4 pb-4 pt-2 border-b border-slate-200 dark:border-slate-800">
              <div className="pl-2 border-l-2 border-blue-200 dark:border-blue-800 ml-2 space-y-4">
                 <div className="flex justify-between items-start">
-                  <p className="text-sm text-slate-600 dark:text-slate-300">{testCase.description}</p>
-                  <div className="flex gap-2">
+                   <div className="w-full mr-4">
+                       <label className="block text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1">Description</label>
+                       <textarea 
+                          value={testCase.description}
+                          onChange={handleDescriptionChange}
+                          rows={2}
+                          className="w-full text-sm text-slate-600 dark:text-slate-300 bg-transparent border border-transparent hover:border-slate-200 dark:hover:border-slate-700 focus:border-blue-300 dark:focus:border-blue-700 rounded px-2 py-1 transition-colors resize-none focus:outline-none"
+                       />
+                   </div>
+                  <div className="flex gap-2 flex-shrink-0">
                      <button
                        onClick={(e) => {
                          e.stopPropagation();
@@ -127,12 +190,15 @@ const TestCaseRow: React.FC<TestCaseRowProps> = ({ testCase, suiteIndex, caseInd
                   </div>
                 </div>
                 
-                {testCase.preconditions && (
-                   <div className="text-xs">
-                     <span className="font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Preconditions:</span>
-                     <span className="text-slate-600 dark:text-slate-400 ml-2">{testCase.preconditions}</span>
-                   </div>
-                )}
+                 <div>
+                    <label className="block text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1">Preconditions</label>
+                    <textarea 
+                        value={testCase.preconditions || ''}
+                        onChange={handlePreconditionsChange}
+                        rows={1}
+                        className="w-full text-sm text-slate-600 dark:text-slate-400 bg-transparent border border-transparent hover:border-slate-200 dark:hover:border-slate-700 focus:border-blue-300 dark:focus:border-blue-700 rounded px-2 py-1 transition-colors resize-none focus:outline-none"
+                    />
+                 </div>
 
                 {/* Test Data Display */}
                 {testCase.testData && testCase.testData.length > 0 && (
@@ -142,7 +208,9 @@ const TestCaseRow: React.FC<TestCaseRowProps> = ({ testCase, suiteIndex, caseInd
                        {testCase.testData.map((d, i) => (
                          <div key={i} className="flex justify-between border-b border-slate-100 dark:border-slate-800 last:border-0 pb-1">
                             <span className="text-slate-600 dark:text-slate-400 font-medium">{d.key}:</span>
-                            <span className="font-mono text-slate-800 dark:text-slate-200">{d.isSensitive ? '••••••' : d.value}</span>
+                            <span className="font-mono text-slate-800 dark:text-slate-200">
+                                {d.isSensitive ? getPartiallyMaskedValue(d.key, d.value) : d.value}
+                            </span>
                          </div>
                        ))}
                     </div>
@@ -163,9 +231,26 @@ const TestCaseRow: React.FC<TestCaseRowProps> = ({ testCase, suiteIndex, caseInd
                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                        {testCase.steps.map((step, idx) => (
                          <tr key={idx}>
-                           <td className="px-3 py-2 text-slate-400 dark:text-slate-500 font-mono text-xs">{step.stepNumber}</td>
-                           <td className="px-3 py-2 text-slate-700 dark:text-slate-300">{maskSensitiveText(step.action)}</td>
-                           <td className="px-3 py-2 text-slate-600 dark:text-slate-400">{step.expected}</td>
+                           {/* Automatically generated step number based on index */}
+                           <td className="px-3 py-2 text-slate-400 dark:text-slate-500 font-mono text-xs align-top pt-3">
+                              {idx + 1}
+                           </td>
+                           <td className="px-3 py-2 text-slate-700 dark:text-slate-300">
+                              <textarea
+                                value={step.action}
+                                onChange={(e) => handleStepChange(idx, 'action', e.target.value)}
+                                rows={2}
+                                className="w-full bg-transparent border-transparent focus:border-blue-300 dark:focus:border-blue-700 rounded resize-none focus:outline-none p-1"
+                              />
+                           </td>
+                           <td className="px-3 py-2 text-slate-600 dark:text-slate-400">
+                              <textarea
+                                value={step.expected}
+                                onChange={(e) => handleStepChange(idx, 'expected', e.target.value)}
+                                rows={2}
+                                className="w-full bg-transparent border-transparent focus:border-blue-300 dark:focus:border-blue-700 rounded resize-none focus:outline-none p-1"
+                              />
+                           </td>
                          </tr>
                        ))}
                      </tbody>
@@ -183,12 +268,14 @@ type FilterType = 'ALL' | 'POSITIVE' | 'NEGATIVE' | 'ACCESSIBILITY';
 type SortOrder = 'DEFAULT' | 'PRIORITY_ASC' | 'PRIORITY_DESC';
 
 const TestPlanDisplay: React.FC<TestPlanDisplayProps> = ({ 
-  plan, onReset, onEditConfig, onGenerateMore, onUpdatePlan, onRegenerateCase, generatingMoreSuiteIndex, onSaveSession 
+  plan, onReset, onEditConfig, onGenerateMore, onUpdatePlan, onRegenerateCase, onUpdateTestCase, generatingMoreSuiteIndex, onSaveSession 
 }) => {
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [filter, setFilter] = useState<FilterType>('ALL');
   const [sortOrder, setSortOrder] = useState<SortOrder>('DEFAULT');
   const [activeAddCasesSuite, setActiveAddCasesSuite] = useState<number | null>(null);
+  const [activeScriptSuite, setActiveScriptSuite] = useState<number | null>(null);
+  const [addCaseCount, setAddCaseCount] = useState<number>(3);
 
   // Regenerate Modal State
   const [isRegenerateModalOpen, setIsRegenerateModalOpen] = useState(false);
@@ -206,7 +293,7 @@ const TestPlanDisplay: React.FC<TestPlanDisplayProps> = ({
     const name = prompt("Enter a name for this session:", `Plan for ${new URL(plan.websiteUrl).hostname}`);
     if (name) {
       onSaveSession(name);
-      alert("Session saved successfully!");
+      alert("Session saved/renamed successfully!");
     }
   };
 
@@ -337,33 +424,113 @@ const TestPlanDisplay: React.FC<TestPlanDisplayProps> = ({
 
   // ... Add Cases Logic ...
   const handleAddCasesClick = (suiteIdx: number, type?: string) => {
-     onGenerateMore(suiteIdx, type);
+     onGenerateMore(suiteIdx, type, addCaseCount);
      setActiveAddCasesSuite(null); // Close dropdown
   };
 
+  const handleViewFullPlan = () => {
+    const newWindow = window.open('', '_blank');
+    if (newWindow) {
+      newWindow.document.write(`
+        <html>
+          <head>
+            <title>Test Plan - ${plan.websiteUrl}</title>
+            <script src="https://cdn.tailwindcss.com"></script>
+          </head>
+          <body class="bg-gray-50 p-8">
+            <div class="max-w-4xl mx-auto bg-white p-8 rounded shadow">
+              <h1 class="text-3xl font-bold mb-4">Test Plan</h1>
+              <div class="mb-4 text-gray-600">
+                <p><strong>URL:</strong> ${plan.websiteUrl}</p>
+                <p><strong>Generated:</strong> ${new Date().toLocaleDateString()}</p>
+              </div>
+              
+              <h2 class="text-xl font-bold mt-6 mb-2">Executive Summary</h2>
+              <p class="mb-4">${plan.summary}</p>
+
+              ${plan.testStrategy ? `<h3 class="font-bold mt-4">Strategy</h3><p>${plan.testStrategy}</p>` : ''}
+              ${plan.scope ? `<h3 class="font-bold mt-4">Scope</h3><p>${plan.scope}</p>` : ''}
+
+              <h2 class="text-xl font-bold mt-8 mb-4">Test Suites</h2>
+              ${plan.suites.map(s => `
+                <div class="mb-8 border-b pb-4">
+                  <h3 class="text-lg font-bold text-blue-700">${s.suiteName}</h3>
+                  <p class="text-sm text-gray-500 mb-4">${s.description}</p>
+                  <div class="space-y-4">
+                    ${s.cases.map(c => `
+                      <div class="border p-4 rounded bg-gray-50">
+                        <div class="flex justify-between font-bold mb-2">
+                          <span>${c.id}: ${c.title}</span>
+                          <span class="text-xs px-2 py-1 bg-gray-200 rounded">${c.priority}</span>
+                        </div>
+                        <p class="text-sm mb-2">${c.description}</p>
+                        ${c.preconditions ? `<p class="text-xs text-gray-500"><strong>Preconditions:</strong> ${c.preconditions}</p>` : ''}
+                        ${c.steps.length > 0 ? `
+                          <table class="w-full text-sm mt-2 border-collapse border border-gray-300">
+                            <thead><tr class="bg-gray-100"><th class="border p-1 w-10">#</th><th class="border p-1">Action</th><th class="border p-1">Expected</th></tr></thead>
+                            <tbody>
+                              ${c.steps.map((st, i) => `<tr><td class="border p-1 text-center">${i + 1}</td><td class="border p-1">${st.action}</td><td class="border p-1">${st.expected}</td></tr>`).join('')}
+                            </tbody>
+                          </table>
+                        ` : ''}
+                      </div>
+                    `).join('')}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </body>
+        </html>
+      `);
+      newWindow.document.close();
+    }
+  };
+
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 animate-fade-in" onClick={() => { setIsExportOpen(false); setActiveAddCasesSuite(null); }}>
+    <div className="max-w-7xl mx-auto px-4 py-8 animate-fade-in" onClick={() => { setIsExportOpen(false); setActiveAddCasesSuite(null); setActiveScriptSuite(null); }}>
       {/* ... Header and Summary (existing code structure) ... */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
         <div>
           <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Test Plan Summary</h2>
-           <div className="flex items-center text-slate-500 dark:text-slate-400 text-sm mt-1">
-            <span className="mr-2">Target:</span>
-            <a href={plan.websiteUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline font-mono">
-              {plan.websiteUrl}
-            </a>
+           <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-slate-500 dark:text-slate-400 text-sm mt-1">
+            <span className="flex items-center gap-2">
+              <span className="mr-1">Target:</span>
+              <a href={plan.websiteUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline font-mono">
+                {plan.websiteUrl}
+              </a>
+            </span>
+             {plan.authAnalysis && (
+                <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${plan.authAnalysis.used ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'}`}>
+                  {plan.authAnalysis.used ? (
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                  ) : (
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                  )}
+                  {plan.authAnalysis.used ? 'Authenticated Context Applied' : 'Login Info Not Used'}
+                </span>
+             )}
           </div>
         </div>
         <div className="flex gap-2 relative">
            <button 
+             onClick={handleViewFullPlan}
+             className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors flex items-center shadow-sm"
+           >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+              View Full Plan
+           </button>
+
+           <button 
               onClick={handleSaveClick}
               className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center shadow-sm"
-              title="Save this session"
+              title="Save/Rename this session"
            >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
               </svg>
-              Save Session
+              Rename Session
            </button>
 
            {/* Export Dropdown */}
@@ -372,7 +539,7 @@ const TestPlanDisplay: React.FC<TestPlanDisplayProps> = ({
                 onClick={(e) => { e.stopPropagation(); setIsExportOpen(!isExportOpen); }}
                 className="px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition-colors flex items-center shadow-sm"
               >
-                <span>Export Report</span>
+                <span>Export</span>
                 <svg className={`ml-2 h-4 w-4 transition-transform ${isExportOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
@@ -482,23 +649,43 @@ const TestPlanDisplay: React.FC<TestPlanDisplayProps> = ({
           const isGeneratingThisSuite = generatingMoreSuiteIndex === idx;
 
           return (
-            <div key={idx} className="bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm transition-colors duration-300">
-               <div className="bg-slate-100 dark:bg-slate-800 px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between">
+            <div key={idx} className="bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 shadow-sm transition-colors duration-300 relative">
+               <div className="bg-slate-100 dark:bg-slate-800 px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between rounded-t-lg">
                   <div className="flex-1">
                     <h4 className="text-lg font-bold text-slate-800 dark:text-white">{suite.suiteName}</h4>
                     <p className="text-sm text-slate-500 dark:text-slate-400">{suite.description}</p>
                   </div>
                   <div className="flex items-center gap-3 mt-2 sm:mt-0 relative">
-                    {/* Generate Suite Script Button */}
-                    <button
-                        onClick={(e) => { e.stopPropagation(); handleGenerateSuiteScript(suite); }}
-                        className="px-3 py-1 text-xs font-medium text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300 border border-purple-200 dark:border-purple-900 bg-purple-50 dark:bg-purple-900/20 rounded hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors flex items-center"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                        </svg>
-                        Generate Suite Script
-                    </button>
+                    
+                    {/* Generate Suite Script Dropdown */}
+                    <div className="relative">
+                        <button
+                            onClick={(e) => { e.stopPropagation(); setActiveScriptSuite(activeScriptSuite === idx ? null : idx); }}
+                            className="px-3 py-1 text-xs font-medium text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300 border border-purple-200 dark:border-purple-900 bg-purple-50 dark:bg-purple-900/20 rounded hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors flex items-center"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                            </svg>
+                            Generate Script
+                            <svg className={`ml-1 h-3 w-3 transform transition-transform ${activeScriptSuite === idx ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </button>
+                        
+                        {activeScriptSuite === idx && (
+                            <div className="absolute right-0 mt-2 w-32 bg-white dark:bg-slate-900 rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-20 border border-slate-100 dark:border-slate-700 animate-fade-in origin-top-right p-1" onClick={(e) => e.stopPropagation()}>
+                                <div className="px-2 py-1 text-[10px] uppercase text-slate-400 font-bold border-b border-slate-100 dark:border-slate-800 mb-1">
+                                    Select Tool
+                                </div>
+                                <button
+                                    onClick={() => { handleGenerateSuiteScript(suite); setActiveScriptSuite(null); }}
+                                    className="block w-full text-left px-2 py-1.5 rounded text-xs text-slate-700 dark:text-slate-300 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:text-purple-700 dark:hover:text-purple-300 transition-colors"
+                                >
+                                    Cypress
+                                </button>
+                            </div>
+                        )}
+                    </div>
 
                     <span className="px-3 py-1 bg-white dark:bg-slate-700 rounded-full text-xs font-medium text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 shadow-sm">
                        {processedCases.length} cases
@@ -530,21 +717,32 @@ const TestPlanDisplay: React.FC<TestPlanDisplayProps> = ({
                         )}
                         
                         {activeAddCasesSuite === idx && !isGeneratingThisSuite && (
-                           <div className="absolute right-0 mt-2 w-40 bg-white dark:bg-slate-900 rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-20 border border-slate-100 dark:border-slate-700 animate-fade-in origin-top-right">
-                              <div className="py-1">
-                                 <button onClick={(e) => { e.stopPropagation(); handleAddCasesClick(idx); }} className="block w-full text-left px-4 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">
+                           <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-slate-900 rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-20 border border-slate-100 dark:border-slate-700 animate-fade-in origin-top-right p-2" onClick={(e) => e.stopPropagation()}>
+                                <div className="mb-2 px-2 pb-2 border-b border-slate-100 dark:border-slate-800">
+                                   <label className="text-[10px] uppercase text-slate-500 dark:text-slate-400 font-bold mb-1 block">Count to Generate</label>
+                                   <input 
+                                     type="number" 
+                                     min="1" 
+                                     max="10" 
+                                     value={addCaseCount}
+                                     onChange={(e) => setAddCaseCount(Math.min(10, Math.max(1, parseInt(e.target.value) || 1)))}
+                                     className="w-full text-xs p-1.5 border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                                   />
+                                </div>
+                              <div className="space-y-1">
+                                 <button onClick={() => handleAddCasesClick(idx)} className="block w-full text-left px-2 py-1.5 rounded text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">
                                    Any / Random
                                  </button>
-                                 <button onClick={(e) => { e.stopPropagation(); handleAddCasesClick(idx, 'Positive'); }} className="block w-full text-left px-4 py-2 text-xs text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20">
+                                 <button onClick={() => handleAddCasesClick(idx, 'Positive')} className="block w-full text-left px-2 py-1.5 rounded text-xs text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20">
                                    Positive Flow
                                  </button>
-                                 <button onClick={(e) => { e.stopPropagation(); handleAddCasesClick(idx, 'Negative'); }} className="block w-full text-left px-4 py-2 text-xs text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">
+                                 <button onClick={() => handleAddCasesClick(idx, 'Negative')} className="block w-full text-left px-2 py-1.5 rounded text-xs text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">
                                    Negative Flow
                                  </button>
-                                 <button onClick={(e) => { e.stopPropagation(); handleAddCasesClick(idx, 'UI/UX'); }} className="block w-full text-left px-4 py-2 text-xs text-pink-700 dark:text-pink-400 hover:bg-pink-50 dark:hover:bg-pink-900/20">
+                                 <button onClick={() => handleAddCasesClick(idx, 'UI/UX')} className="block w-full text-left px-2 py-1.5 rounded text-xs text-pink-700 dark:text-pink-400 hover:bg-pink-50 dark:hover:bg-pink-900/20">
                                    UI/UX
                                  </button>
-                                 <button onClick={(e) => { e.stopPropagation(); handleAddCasesClick(idx, 'Accessibility'); }} className="block w-full text-left px-4 py-2 text-xs text-teal-700 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/20">
+                                 <button onClick={() => handleAddCasesClick(idx, 'Accessibility')} className="block w-full text-left px-2 py-1.5 rounded text-xs text-teal-700 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/20">
                                    Accessibility
                                  </button>
                               </div>
@@ -575,6 +773,7 @@ const TestPlanDisplay: React.FC<TestPlanDisplayProps> = ({
                           websiteUrl={plan.websiteUrl}
                           onOpenRegenerate={handleOpenRegenerate}
                           onGenerateScript={handleGenerateScript}
+                          onUpdate={onUpdateTestCase}
                         />
                       ))}
                       {processedCases.length === 0 && (

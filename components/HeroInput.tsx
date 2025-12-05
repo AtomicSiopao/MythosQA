@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { TestDataItem, SavedSession } from '../types';
 
@@ -39,16 +40,9 @@ const HeroInput: React.FC<HeroInputProps> = ({ onAnalyze, isLoading, savedSessio
   }, []);
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[calc(100vh-160px)] w-full text-center px-4 py-8">
+    <div className="flex flex-col items-center justify-center min-h-full w-full text-center px-4 py-8">
       <div className="mb-8 relative flex flex-col items-center animate-fade-in">
         
-        {/* Golden M Logo */}
-        <div className="relative mb-6 w-24 h-24 bg-black rounded-xl shadow-2xl flex items-center justify-center border-2 border-slate-800 ring-4 ring-yellow-500/20">
-           <span className="font-serif text-6xl font-extrabold text-transparent bg-clip-text bg-gradient-to-b from-yellow-300 via-yellow-500 to-yellow-700 drop-shadow-sm transform translate-y-1">
-             M
-           </span>
-        </div>
-
         <h1 className="relative text-5xl md:text-6xl font-extrabold text-slate-900 dark:text-white tracking-tight mb-2">
           Mythos<span className="text-yellow-600 dark:text-yellow-500">QA</span>
         </h1>
@@ -151,43 +145,13 @@ const HeroInput: React.FC<HeroInputProps> = ({ onAnalyze, isLoading, savedSessio
         </form>
       </div>
 
-      {/* Sessions and History */}
-      <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl w-full">
-         
-         {/* Saved Plans */}
-         {savedSessions.length > 0 && (
-            <div className="text-left">
-               <p className="text-xs text-slate-400 dark:text-slate-500 font-semibold uppercase mb-2">Saved Plans</p>
-               <div className="bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden max-h-60 overflow-y-auto">
-                 {savedSessions.map((session) => (
-                   <div key={session.id} className="group flex items-center justify-between p-3 border-b border-slate-100 dark:border-slate-800 last:border-0 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                      <button 
-                        onClick={() => onLoadSession && onLoadSession(session)}
-                        className="flex-1 text-left truncate"
-                      >
-                         <h4 className="text-sm font-medium text-slate-800 dark:text-slate-200 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{session.name}</h4>
-                         <span className="text-xs text-slate-400">{new Date(session.timestamp).toLocaleDateString()} • {session.url}</span>
-                      </button>
-                      <button 
-                         onClick={() => onDeleteSession && onDeleteSession(session.id)}
-                         className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
-                         title="Delete Session"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
-                   </div>
-                 ))}
-               </div>
-            </div>
-         )}
-
+      {/* Recent URLs & Quick Access - Reduced prominence now that we have a Sidebar */}
+      <div className="mt-8 grid grid-cols-1 gap-8 max-w-2xl w-full">
          {/* Recent URLs */}
          {recentUrls.length > 0 && (
-            <div className={`text-left ${savedSessions.length === 0 ? 'md:col-span-2 md:text-center' : ''}`}>
+            <div className="text-center">
                <p className="text-xs text-slate-400 dark:text-slate-500 font-semibold uppercase mb-2">Recent Searches</p>
-               <div className={`flex flex-wrap gap-2 ${savedSessions.length === 0 ? 'md:justify-center' : ''}`}>
+               <div className="flex flex-wrap justify-center gap-2">
                  {recentUrls.map((recent, idx) => (
                    <button 
                      key={idx}
@@ -208,6 +172,18 @@ const HeroInput: React.FC<HeroInputProps> = ({ onAnalyze, isLoading, savedSessio
         <span className="flex items-center"><span className="w-2 h-2 rounded-full bg-purple-500 mr-2"></span>Secure Data Input</span>
         <span className="flex items-center"><span className="w-2 h-2 rounded-full bg-orange-500 mr-2"></span>Full Plan Generation</span>
       </div>
+      
+       <footer className="mt-auto py-8 transition-colors duration-300 w-full">
+        <div className="max-w-7xl mx-auto px-4 text-center text-slate-400 dark:text-slate-600 text-sm flex flex-col items-center justify-center gap-2">
+          <p>© {new Date().getFullYear()} Mythos QA. Generated content may be inaccurate.</p>
+          <a href="https://github.com/AtomicSiopao/" target="_blank" rel="noopener noreferrer" className="flex items-center hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+            <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+               <path fillRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clipRule="evenodd"></path>
+            </svg>
+            AtomicSiopao
+          </a>
+        </div>
+      </footer>
     </div>
   );
 };
