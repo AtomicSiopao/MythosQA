@@ -1,4 +1,5 @@
-import { TestPlan, TestSuite, TestCase } from '../types';
+
+import { TestPlan, TestSuite, TestCase, TestPriority } from '../types';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -37,6 +38,16 @@ export const exportToPdf = (plan: TestPlan) => {
     addNewPageIfNeeded(splitText.length * 5);
     doc.text(splitText, 14, cursorY);
     cursorY += (splitText.length * 5) + 5;
+  };
+
+  const getPriorityColor = (p: TestPriority) => {
+    switch (p) {
+      case TestPriority.CRITICAL: return [220, 38, 38]; // Red 600
+      case TestPriority.HIGH: return [234, 88, 12]; // Orange 600
+      case TestPriority.MEDIUM: return [37, 99, 235]; // Blue 600
+      case TestPriority.LOW: return [100, 116, 139]; // Slate 500
+      default: return [156, 163, 175];
+    }
   };
 
   // --- Title Page ---
@@ -110,7 +121,14 @@ export const exportToPdf = (plan: TestPlan) => {
       doc.setFontSize(9);
       doc.setFont("helvetica", "normal");
       doc.setTextColor(80);
-      doc.text(`Priority: ${tc.priority}  |  Type: ${tc.type}  |  Scenario: ${tc.scenarioType || 'N/A'}`, 14, cursorY);
+      
+      // Draw Color Badge for Priority
+      const pColor = getPriorityColor(tc.priority);
+      doc.setFillColor(pColor[0], pColor[1], pColor[2]);
+      doc.rect(14, cursorY - 3, 3, 3, 'F');
+      doc.text(`Priority: ${tc.priority}`, 18, cursorY);
+      
+      doc.text(` |  Type: ${tc.type}  |  Scenario: ${tc.scenarioType || 'N/A'}`, 18 + doc.getTextWidth(`Priority: ${tc.priority}`), cursorY);
       cursorY += 8;
 
       // Description & Preconditions

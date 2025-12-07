@@ -23,10 +23,13 @@ export interface TestStep {
   expected: string;
 }
 
+export type TestDataType = 'text' | 'secret' | 'boolean' | 'image' | 'video';
+
 export interface TestDataItem {
   key: string;
   value: string;
   isSensitive: boolean;
+  type?: TestDataType;
 }
 
 export interface TestInputRequirement {
@@ -82,8 +85,27 @@ export interface GenerateOptions {
   url: string;
 }
 
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  createdAt: number;
+}
+
+export type ScriptFramework = 'Cypress' | 'Playwright' | 'Selenium';
+
+export interface GeneratedScript {
+  id: string;
+  name: string;
+  framework: ScriptFramework;
+  code: string;
+  createdAt: number;
+  targetSuiteNames?: string[]; // If specific suites were selected, otherwise implies full plan
+}
+
 export interface SavedSession {
   id: string;
+  userId: string; // Owner of the session
   name: string;
   timestamp: number;
   url: string;
@@ -91,4 +113,5 @@ export interface SavedSession {
   testData: TestDataItem[];
   requirements: TestRequirementsAnalysis | null;
   artifactScope: ArtifactScope;
+  generatedScripts?: GeneratedScript[];
 }

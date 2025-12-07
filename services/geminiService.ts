@@ -1,6 +1,6 @@
 
 import { GoogleGenAI } from "@google/genai";
-import { TestPlan, TestSuite, TestCase, TestType, TestPriority, TestRequirementsAnalysis, TestDataItem, ArtifactScope } from "../types";
+import { TestPlan, TestSuite, TestCase, TestType, TestPriority, TestRequirementsAnalysis, TestDataItem, ArtifactScope, ScriptFramework } from "../types";
 
 // Helper to extract JSON from Markdown code blocks
 const extractJson = (text: string): any => {
@@ -461,5 +461,69 @@ export const generateSuiteCypressScript = async (url: string, suite: TestSuite):
   } catch (error) {
     console.error("Error generating suite script:", error);
     throw new Error("Failed to generate suite automation script.");
+  }
+};
+
+export const generateAutomationScript = async (
+  framework: ScriptFramework,
+  plan: TestPlan,
+  suitesToInclude?: string[] // If empty/null, include all
+): Promise<string> => {
+  const ai = getAiClient();
+
+  const suites = suitesToInclude && suitesToInclude.length > 0
+    ? plan.suites.filter(s => suitesToInclude.includes(s.suiteName))
+    : plan.suites;
+
+  const totalCases = suites.reduce((acc, s) => acc + s.cases.length, 0);
+
+  const prompt = `
+    You are an expert QA Automation Engineer specialized in ${framework}.
+
+    Task: Write a complete, robust automation script using ${framework} for the provided Test Plan data.
+    Target Website: ${plan.websiteUrl}
+    Context:
+    - Total Suites: ${suites.length}
+    - Total Test Cases: ${totalCases}
+
+    Suites and Cases Data:
+    ${JSON.stringify(suites.map(s => ({
+      name: s.suiteName,
+      cases: s.cases.map(c => ({
+        id: c.id,
+        title: c.title,
+        steps: c.steps,
+        testData: c.testData
+      }))
+    })), null, 2)}
+
+    Framework Specific Instructions:
+    ${framework === 'Cypress' ? '- Use `cy.visit`, `cy.get`, `cy.intercept`. Use Mocha describe/it blocks.' : ''}
+    ${framework === 'Playwright' ? '- Use `await page.goto`, `await page.locator`. Use Playwright test/expect structure.' : ''}
+    ${framework === 'Selenium' ? '- Use Python or JavaScript Selenium WebDriver syntax (Prefer JavaScript/Node.js). Use typical driver.findElement, etc.' : ''}
+
+    General Instructions:
+    - Create a single file structure (or class-based if appropriate for Selenium).
+    - Handle authentication if credentials are present in test data.
+    - Use placeholders for sensitive data.
+    - Add comments for clarity.
+    - JUST RETURN THE CODE. No markdown blocks if possible, or clean them.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-preview',
+      contents: prompt,
+      config: {
+        thinkingConfig: { thinkingBudget: 16000 },
+      }
+    });
+
+    let text = response.text || '';
+    text = text.replace(/^```(javascript|typescript|js|ts|python)?\n/, '').replace(/```$/, '');
+    return text;
+  } catch (error) {
+    console.error("Error generating automation script:", error);
+    throw new Error(`Failed to generate ${framework} script.`);
   }
 };
