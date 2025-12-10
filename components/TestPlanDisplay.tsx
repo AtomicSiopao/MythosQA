@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { TestPlan, TestSuite, TestCase, TestPriority, TestType, TestDataItem, SavedSession } from '../types';
+import { TestPlan, TestSuite, TestCase, TestPriority, TestType, TestDataItem, SavedSession, GeneratedScript } from '../types';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { exportToPdf, exportToCsv } from '../services/exportService';
 import { generateCypressScript, generateSuiteCypressScript } from '../services/geminiService';
@@ -15,6 +15,7 @@ interface TestPlanDisplayProps {
   onUpdateTestCase: (suiteIndex: number, caseIndex: number, updatedCase: TestCase) => void;
   generatingSuiteIndices: number[];
   onSaveSession: (name: string) => void;
+  onSaveScript: (script: GeneratedScript) => void;
 }
 
 const COLORS = ['#0ea5e9', '#8b5cf6', '#f59e0b', '#ef4444', '#10b981', '#6366f1'];
@@ -267,7 +268,7 @@ type FilterType = 'ALL' | 'POSITIVE' | 'NEGATIVE' | 'ACCESSIBILITY';
 type SortOrder = 'DEFAULT' | 'PRIORITY_ASC' | 'PRIORITY_DESC';
 
 const TestPlanDisplay: React.FC<TestPlanDisplayProps> = ({ 
-  plan, onReset, onEditConfig, onGenerateMore, onUpdatePlan, onRegenerateCase, onUpdateTestCase, generatingSuiteIndices, onSaveSession 
+  plan, onReset, onEditConfig, onGenerateMore, onUpdatePlan, onRegenerateCase, onUpdateTestCase, generatingSuiteIndices, onSaveSession, onSaveScript
 }) => {
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [filter, setFilter] = useState<FilterType>('ALL');
@@ -379,13 +380,22 @@ const TestPlanDisplay: React.FC<TestPlanDisplayProps> = ({
 
   // ... Script Logic ...
   const handleGenerateScript = async (testCase: TestCase) => {
-     setScriptTitle('Automation Script');
+     setScriptTitle(`Automation Script: ${testCase.id}`);
      setScriptContent('');
      setIsGeneratingScript(true);
      setIsScriptModalOpen(true);
      try {
        const script = await generateCypressScript(plan.websiteUrl, testCase);
        setScriptContent(script);
+       // Save to session automatically
+       const newScript: GeneratedScript = {
+         id: Date.now().toString(),
+         name: `Cypress - Case ${testCase.id}`,
+         framework: 'Cypress',
+         code: script,
+         createdAt: Date.now()
+       };
+       onSaveScript(newScript);
      } catch (e) {
        setScriptContent('Error generating script. Please try again.');
      } finally {
@@ -401,6 +411,16 @@ const TestPlanDisplay: React.FC<TestPlanDisplayProps> = ({
     try {
       const script = await generateSuiteCypressScript(plan.websiteUrl, suite);
       setScriptContent(script);
+      // Save to session automatically
+      const newScript: GeneratedScript = {
+        id: Date.now().toString(),
+        name: `Cypress - Suite ${suite.suiteName}`,
+        framework: 'Cypress',
+        code: script,
+        createdAt: Date.now(),
+        targetSuiteNames: [suite.suiteName]
+      };
+      onSaveScript(newScript);
     } catch (e) {
       setScriptContent('Error generating suite script. Please try again.');
     } finally {
@@ -424,7 +444,7 @@ const TestPlanDisplay: React.FC<TestPlanDisplayProps> = ({
      // ... (Implementation unchanged, just re-referencing for context)
      const newWindow = window.open('', '_blank');
      if (newWindow) {
-        // ... Logic
+        // ... Logic for printable view
         newWindow.document.write(`<html>...</html>`);
         newWindow.document.close();
      }
@@ -707,10 +727,124 @@ const TestPlanDisplay: React.FC<TestPlanDisplayProps> = ({
           );
         })}
       </div>
+      
+      {/* Script Generation Modal */}
+      {isScriptModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in" onClick={() => setIsScriptModalOpen(false)}>
+           <div className="bg-white dark:bg-slate-900 w-full max-w-4xl max-h-[85vh] rounded-xl shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+               <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-950">
+                  <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                    </svg>
+                    {scriptTitle}
+                  </h3>
+                  <button onClick={() => setIsScriptModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+               </div>
+               
+               <div className="flex-1 overflow-auto bg-slate-900 p-6 relative">
+                  {isGeneratingScript ? (
+                     <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                        <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                        <p>Generating script code...</p>
+                     </div>
+                  ) : (
+                    <>
+                       <div className="absolute top-4 right-4 z-10">
+                            <button 
+                                onClick={copyScriptToClipboard}
+                                className="bg-slate-700 hover:bg-slate-600 text-white text-xs px-3 py-1.5 rounded-md shadow-sm border border-slate-600 transition-colors flex items-center gap-1"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                </svg>
+                                Copy
+                            </button>
+                        </div>
+                        <pre className="font-mono text-sm text-green-400 leading-relaxed whitespace-pre-wrap">
+                            {scriptContent}
+                        </pre>
+                    </>
+                  )}
+               </div>
+               <div className="p-3 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 text-xs text-slate-500 text-center">
+                  This script is automatically saved to your session.
+               </div>
+           </div>
+        </div>
+      )}
 
-      {/* Regenerate and Script Modals (unchanged logic omitted for brevity, keeping same as previous) */}
-      {/* ... (Regenerate Modal code) ... */}
-      {/* ... (Script Modal code) ... */}
+      {/* Regenerate Modal (unchanged) */}
+      {isRegenerateModalOpen && selectedCaseInfo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in" onClick={() => setIsRegenerateModalOpen(false)}>
+           <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden" onClick={e => e.stopPropagation()}>
+               <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
+                  <h3 className="text-lg font-bold text-slate-800 dark:text-white">Regenerate Test Case</h3>
+                  <button onClick={() => setIsRegenerateModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+               </div>
+               <div className="p-6 max-h-[60vh] overflow-y-auto">
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+                     Update test data below to generate a new version of this test case.
+                  </p>
+                  
+                  <div className="space-y-3">
+                     {modalTestData.map((item, idx) => (
+                        <div key={idx} className="flex gap-2 items-start">
+                           <input 
+                             className="w-1/3 px-2 py-1.5 text-xs border border-slate-300 dark:border-slate-700 rounded bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                             value={item.key}
+                             onChange={(e) => handleModalDataChange(idx, 'key', e.target.value)}
+                             placeholder="Field Name"
+                           />
+                           <div className="flex-1 relative">
+                              <input 
+                                className="w-full px-2 py-1.5 text-xs border border-slate-300 dark:border-slate-700 rounded bg-white dark:bg-slate-800 text-slate-900 dark:text-white pr-8"
+                                value={item.value}
+                                onChange={(e) => handleModalDataChange(idx, 'value', e.target.value)}
+                                placeholder="Value"
+                                type={item.isSensitive ? 'password' : 'text'}
+                              />
+                               <button
+                                type="button"
+                                onClick={() => handleModalDataChange(idx, 'isSensitive', !item.isSensitive)}
+                                className={`absolute right-2 top-1.5 text-slate-400 ${item.isSensitive ? 'text-blue-500' : ''}`}
+                               >
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                                  </svg>
+                               </button>
+                           </div>
+                           <button onClick={() => handleRemoveModalField(idx)} className="text-red-400 p-1">
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                              </svg>
+                           </button>
+                        </div>
+                     ))}
+                     <button onClick={handleAddModalField} className="text-xs text-blue-500 font-bold hover:underline">+ Add Field</button>
+                  </div>
+               </div>
+               <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 flex justify-end gap-3">
+                  <button onClick={() => setIsRegenerateModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200">Cancel</button>
+                  <button 
+                    onClick={confirmRegenerate} 
+                    disabled={isRegenerating}
+                    className="px-4 py-2 text-sm font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm flex items-center disabled:opacity-50"
+                  >
+                     {isRegenerating ? 'Rewriting...' : 'Regenerate'}
+                  </button>
+               </div>
+           </div>
+        </div>
+      )}
     </div>
   );
 };

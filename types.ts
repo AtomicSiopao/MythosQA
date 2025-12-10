@@ -90,6 +90,7 @@ export interface User {
   email: string;
   name: string;
   createdAt: number;
+  role: 'USER' | 'ADMIN';
 }
 
 export type ScriptFramework = 'Cypress' | 'Playwright' | 'Selenium';
@@ -114,4 +115,14 @@ export interface SavedSession {
   requirements: TestRequirementsAnalysis | null;
   artifactScope: ArtifactScope;
   generatedScripts?: GeneratedScript[];
+}
+
+export interface SystemError {
+  id: string;
+  timestamp: number;
+  code: string;
+  message: string;
+  severity: 'CRITICAL' | 'WARNING' | 'INFO';
+  region: string;
+  userAffected?: string; // Masked ID
 }

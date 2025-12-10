@@ -8,11 +8,12 @@ import Sidebar from './components/Sidebar';
 import AuthScreen from './components/AuthScreen';
 import ArtifactManager from './components/ArtifactManager';
 import ScriptGenerator from './components/ScriptGenerator';
+import AdminDashboard from './components/AdminDashboard';
 import { TestPlan, TestRequirementsAnalysis, TestDataItem, ArtifactScope, TestSuite, TestCase, SavedSession, User, GeneratedScript } from './types';
 import { generateTestPlan, analyzeRequirements, generateMoreTestCases, regenerateTestCase } from './services/geminiService';
 
 type GeneratorState = 'IDLE' | 'ANALYZING' | 'CONFIGURING' | 'GENERATING' | 'DISPLAY';
-type AppView = 'GENERATOR' | 'PLANS' | 'SUITES' | 'CASES' | 'SCRIPTS';
+type AppView = 'GENERATOR' | 'PLANS' | 'SUITES' | 'CASES' | 'SCRIPTS' | 'ADMIN';
 
 const App: React.FC = () => {
   // Global App State
@@ -49,7 +50,12 @@ const App: React.FC = () => {
     try {
       const storedUser = localStorage.getItem('mythos_current_user');
       if (storedUser) {
-        setCurrentUser(JSON.parse(storedUser));
+        const user = JSON.parse(storedUser);
+        setCurrentUser(user);
+        // If restoring session and user is admin, default to admin view if not set
+        if (user.role === 'ADMIN') {
+           // We don't force it on refresh to allow navigation, but handleLogin forces it
+        }
       }
     } catch (e) {
       console.error("Failed to load user", e);
@@ -78,6 +84,13 @@ const App: React.FC = () => {
   const handleLogin = (user: User) => {
     setCurrentUser(user);
     localStorage.setItem('mythos_current_user', JSON.stringify(user));
+    
+    // REDIRECT ADMIN TO DASHBOARD
+    if (user.role === 'ADMIN') {
+      setCurrentView('ADMIN');
+    } else {
+      setCurrentView('GENERATOR');
+    }
   };
 
   const handleLogout = () => {
@@ -89,6 +102,9 @@ const App: React.FC = () => {
   // --- Session Data Handlers ---
   const userSessions = useMemo(() => {
     if (!currentUser) return [];
+    // If Admin, show ALL sessions (optional feature for admin, but let's stick to personal for now to avoid clutter)
+    // Actually, typical SAAS admin dashboard manages users, but personal workspace shows own. 
+    // Let's keep it strictly own sessions for consistency unless we implement a "View User" feature.
     return savedSessions.filter(s => s.userId === currentUser.id || !s.userId); 
   }, [savedSessions, currentUser]);
 
@@ -439,6 +455,7 @@ const App: React.FC = () => {
                   onUpdateTestCase={handleUpdateTestCase}
                   generatingSuiteIndices={generatingSuiteIndices}
                   onSaveSession={handleSaveSessionName}
+                  onSaveScript={(script) => currentSessionId && handleSaveScript(currentSessionId, script)}
                 />
               )}
             </>
@@ -447,6 +464,8 @@ const App: React.FC = () => {
                sessions={userSessions}
                onSaveScript={handleSaveScript}
             />
+          ) : currentView === 'ADMIN' ? (
+            <AdminDashboard currentUser={currentUser} />
           ) : (
             <ArtifactManager 
                sessions={userSessions} 

@@ -96,11 +96,14 @@ const Sidebar: React.FC<SidebarProps> = ({
         `}
       >
         <div className="h-16 flex items-center px-4 border-b border-slate-200 dark:border-slate-800 flex-shrink-0 min-w-[16rem] gap-3">
-          <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-xs font-bold">
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white ${currentUser.role === 'ADMIN' ? 'bg-purple-600' : 'bg-slate-400'}`}>
             {currentUser.name.charAt(0).toUpperCase()}
           </div>
           <div className="flex-1 truncate">
-            <h2 className="font-bold text-sm text-slate-800 dark:text-slate-100 truncate">{currentUser.name}</h2>
+            <div className="flex items-center gap-2">
+               <h2 className="font-bold text-sm text-slate-800 dark:text-slate-100 truncate">{currentUser.name}</h2>
+               {currentUser.role === 'ADMIN' && <span className="text-[9px] bg-purple-100 text-purple-700 px-1 rounded font-bold border border-purple-200">ADMIN</span>}
+            </div>
             <p className="text-[10px] text-slate-500 truncate">{currentUser.email}</p>
           </div>
         </div>
@@ -109,6 +112,21 @@ const Sidebar: React.FC<SidebarProps> = ({
            
            {/* Navigation Links */}
            <div className="p-3 space-y-1 border-b border-slate-100 dark:border-slate-800">
+              
+              {/* ADMIN DASHBOARD LINK */}
+              {currentUser.role === 'ADMIN' && (
+                <button 
+                  onClick={() => { onChangeView('ADMIN'); if(window.innerWidth < 1024) toggleSidebar(); }}
+                  className={`w-full text-left px-3 py-2 mb-2 rounded-lg text-sm font-medium flex items-center gap-3 transition-colors ${currentView === 'ADMIN' ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  Admin Dashboard
+                </button>
+              )}
+
               <button 
                 onClick={() => { onChangeView('GENERATOR'); if(window.innerWidth < 1024) toggleSidebar(); }}
                 className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-3 transition-colors ${currentView === 'GENERATOR' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
