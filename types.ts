@@ -12,10 +12,17 @@ export enum TestType {
   SECURITY = 'Security',
   PERFORMANCE = 'Performance',
   ACCESSIBILITY = 'Accessibility',
-  EDGE_CASE = 'Edge Case'
+  EDGE_CASE = 'Edge Case',
+  SEO = 'SEO'
 }
 
-export type ArtifactScope = 'ALL' | 'TEST_PLAN' | 'SUITES_AND_CASES' | 'CASES_ONLY';
+export type ArtifactScope = 
+  | 'PLAN_ONLY' 
+  | 'SUITES_CASES' 
+  | 'PLAN_SUITES_CASES' 
+  | 'PLAN_SUITES_CHECKLIST' 
+  | 'CHECKLIST_ONLY'
+  | 'ALL';
 
 export interface TestStep {
   stepNumber: number;
@@ -57,6 +64,7 @@ export interface TestCase {
   priority: TestPriority;
   testData?: TestDataItem[];
   steps: TestStep[];
+  isNew?: boolean; // Highlight newly added cases
 }
 
 export interface TestSuite {
@@ -64,6 +72,22 @@ export interface TestSuite {
   description: string;
   cases: TestCase[];
   testDataObservations?: string;
+}
+
+export interface ChecklistItem {
+  id: string;
+  description: string;
+  type: TestType;
+  priority: TestPriority;
+  isChecked?: boolean;
+  isNew?: boolean; // Highlight newly added items
+  category?: string; // Grouping category (e.g., "Login", "SEO", "Checkout")
+}
+
+export interface GenerationConfig {
+  targetFeatures?: string[]; 
+  includedTypes: TestType[];
+  includeSEO?: boolean;
 }
 
 export interface TestPlan {
@@ -74,6 +98,7 @@ export interface TestPlan {
   risks?: string;
   tools?: string;
   suites: TestSuite[];
+  checklist?: ChecklistItem[]; 
   groundingSources?: { uri: string; title: string }[];
   authAnalysis?: {
     used: boolean;
@@ -83,6 +108,12 @@ export interface TestPlan {
 
 export interface GenerateOptions {
   url: string;
+}
+
+export interface ExportOptions {
+  includePlan: boolean;
+  includeSuites: boolean;
+  includeChecklist: boolean;
 }
 
 export interface User {
@@ -101,12 +132,27 @@ export interface GeneratedScript {
   framework: ScriptFramework;
   code: string;
   createdAt: number;
-  targetSuiteNames?: string[]; // If specific suites were selected, otherwise implies full plan
+  targetSuiteNames?: string[]; 
+}
+
+// --- SQM Types ---
+export interface QualityMetric {
+  category: string; // e.g., Reliability, Usability
+  score: number; // 0-100
+  reasoning: string;
+  improvements: string[];
+}
+
+export interface QualityReport {
+  overallScore: number;
+  timestamp: number;
+  executiveSummary: string;
+  metrics: QualityMetric[];
 }
 
 export interface SavedSession {
   id: string;
-  userId: string; // Owner of the session
+  userId: string;
   name: string;
   timestamp: number;
   url: string;
@@ -114,7 +160,9 @@ export interface SavedSession {
   testData: TestDataItem[];
   requirements: TestRequirementsAnalysis | null;
   artifactScope: ArtifactScope;
+  generationConfig?: GenerationConfig;
   generatedScripts?: GeneratedScript[];
+  qualityReport?: QualityReport; // Persist the SQM report
 }
 
 export interface SystemError {
@@ -124,5 +172,6 @@ export interface SystemError {
   message: string;
   severity: 'CRITICAL' | 'WARNING' | 'INFO';
   region: string;
-  userAffected?: string; // Masked ID
+  userAffected?: string;
+  userEmail?: string;
 }

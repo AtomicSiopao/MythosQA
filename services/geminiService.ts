@@ -1,6 +1,6 @@
 
 import { GoogleGenAI } from "@google/genai";
-import { TestPlan, TestSuite, TestCase, TestType, TestPriority, TestRequirementsAnalysis, TestDataItem, ArtifactScope, ScriptFramework } from "../types";
+import { TestPlan, TestSuite, TestCase, TestType, TestPriority, TestRequirementsAnalysis, TestDataItem, ArtifactScope, ScriptFramework, GenerationConfig, ChecklistItem, QualityReport } from "../types";
 
 // Helper to extract JSON from Markdown code blocks
 const extractJson = (text: string): any => {
@@ -47,9 +47,11 @@ export const analyzeRequirements = async (url: string, knownKeys?: string[]): Pr
     1. Analyze the likely functionality of this website (e.g. Login, Search, Checkout, Contact Form).
     2. **CROSS-SITE CONTEXT**: If this website appears to be a landing page that connects to a separate application (e.g., vcam.ai -> dashboard.vcam.ai) or redirects to an auth provider, include requirements for those connected systems as well.
     3. Identify the specific dynamic data inputs that a tester would need to perform comprehensive testing across the entire user journey.
-    4. Return a list of these requirements. Mark any potentially sensitive fields (Password, Credit Card, API Key, PII) as "isSensitive": true.
-    5. **GROUPING**: Group these requirements logically by the page or feature they belong to (e.g., "Login", "Registration", "Checkout", "Profile").
-    6. **INPUT TYPES**:
+    4. **TEXTBOX & INPUT DETECTION**: You MUST identify ALL visible textboxes, textareas, search inputs, and form fields on the page (e.g. Search Bar, Comment Box, Quantity Input, Filter fields). Add them as requirements.
+    5. Return a list of these requirements. 
+    6. **SENSITIVITY**: Mark "isSensitive": true ONLY if the field is a Password or Credit Card Number/CVV. Do NOT mark Emails, Usernames, API Keys, or PII as sensitive unless they are explicitly passwords or financial data.
+    7. **GROUPING**: Group these requirements logically by the page or feature they belong to (e.g., "Login", "Registration", "Checkout", "Profile").
+    8. **INPUT TYPES**:
        - If a field usually has multiple standard options (e.g. "Role" -> Admin, User), provide an "options" array.
        - **SOCIAL LOGIN**: If you identify a "Social Login Provider" field (or similar), YOU MUST ALWAYS include "Email (use provided credentials)" as the first option in the "options" array, followed by others like Google, Facebook, etc.
        - If a field is a simple interaction like a checkbox, toggle, or button click (e.g. "Accept Terms", "Click Submit"), set "inputType": "boolean".
@@ -93,7 +95,7 @@ export const analyzeRequirements = async (url: string, knownKeys?: string[]): Pr
   }
 };
 
-export const generateTestPlan = async (url: string, userTestData: TestDataItem[], artifactScope: ArtifactScope = 'ALL'): Promise<TestPlan> => {
+export const generateTestPlan = async (url: string, userTestData: TestDataItem[], artifactScope: ArtifactScope = 'ALL', config?: GenerationConfig): Promise<TestPlan> => {
   const ai = getAiClient();
 
   // Check if credentials are provided in userTestData to enhance the prompt
@@ -113,24 +115,61 @@ export const generateTestPlan = async (url: string, userTestData: TestDataItem[]
        5. **CROSS-DOMAIN JUMPS**: If logging in redirects to a different subdomain (e.g. dashboard.vcam.ai), explicitly include test cases for that domain.`
     : `Note: No specific login credentials were detected. Focus primarily on public-facing functionality. However, if the site is a landing page for an app, verify that the "Login" or "Get Started" buttons correctly redirect to the application domain.`;
 
+  const seoInstructions = config?.includeSEO
+    ? `**MANDATORY SEO SUITE**: You MUST generate a dedicated Test Suite named "SEO & Metadata Verification".
+       - It must be a separate suite.
+       - Include tests for: Meta Title/Description length and relevance, Canonical tags, Robots.txt presence, Sitemap.xml existence, H1-H6 hierarchy, Image Alt text, Open Graph tags, and Core Web Vitals (LCP, CLS, FID) limits.`
+    : '';
+
   const scopeInstructions = {
-    'ALL': `Generate a comprehensive "Master Test Plan". Include a detailed executive summary covering strategy, risks, scope and tools. THEN, provide a full set of detailed Test Suites and Test Cases with granular steps. This is the complete package.`,
-    'TEST_PLAN': `Focus strictly on the High-Level Test Strategy. The "summary", "testStrategy", "scope", "risks", and "tools" sections should be detailed. The "suites" should be high-level logical groups, and the "cases" inside them should be high-level scenarios (one-liners) WITHOUT detailed steps.`,
-    'SUITES_AND_CASES': `Skip the high-level executive summary (keep it to 1 sentence). Focus 100% of your effort on generating comprehensive Test Suites with detailed, step-by-step Test Cases (steps, data, expected results).`,
-    'CASES_ONLY': `Generate a massive flat list of critical test cases. Group them into a single "Main Suite" or basic logical suites, but minimize the structure. Prioritize quantity and depth of the test steps over the plan hierarchy. Keep the summary empty.`
+    'PLAN_ONLY': `Focus strictly on the High-Level Test Strategy. The "summary", "testStrategy", "scope", "risks", and "tools" sections should be detailed. Return an EMPTY array for "suites" and "checklist".`,
+    
+    'SUITES_CASES': `Skip the high-level executive summary (keep it to 1 sentence). Return an EMPTY array for "checklist". Focus 100% of your effort on generating comprehensive Test Suites with detailed, step-by-step Test Cases (steps, data, expected results).`,
+    
+    'PLAN_SUITES_CASES': `Generate a comprehensive "Master Test Plan". Include a detailed executive summary, strategy, and full suites with detailed test cases. Return an EMPTY array for "checklist".`,
+    
+    'PLAN_SUITES_CHECKLIST': `Generate the Test Plan, Test Suites (with cases), AND a Test Checklist. 
+      For the "checklist" field, generate a categorized array of critical items to verify. Each item should have an "id" (e.g. CHK-01), "description", "type", "priority", and "category". 
+      The checklist serves as a quick manual verification list for Exploratory Testing.`,
+    
+    'CHECKLIST_ONLY': `Generate a comprehensive "Exploratory Testing Checklist" ONLY. 
+      The "checklist" field must be detailed with 20+ items covering critical paths, edge cases, and security verifications. 
+      Return an EMPTY array for "suites". Fill out "summary" briefly.`,
+
+    'ALL': `Generate EVERYTHING: Test Plan, detailed Test Suites with Cases, and a comprehensive Test Checklist ("checklist" field) containing critical verification points.`
   };
+
+  // Build Target Feature Prompt
+  const targetFeaturePrompt = config?.targetFeatures && config.targetFeatures.length > 0
+    ? `**PRIMARY FOCUS AREAS**: The user has explicitly requested to focus the testing on the following features: "${config.targetFeatures.join(', ')}". 
+       - At least 80% of the generated test cases MUST be directly related to these features.
+       - Create specific Test Suites for each of these features if complexity warrants it.
+       - You may include a few integration tests showing how these features interact with others, but the core focus is strictly on these requested areas.`
+    : '';
+
+  // Build Allowed Types Prompt
+  const allowedTypesPrompt = config?.includedTypes && config.includedTypes.length > 0
+    ? `**ALLOWED TEST TYPES**: You are STRICTLY limited to generating test cases of the following types: ${config.includedTypes.join(', ')}. Do NOT generate cases for types not listed here.
+       (Exception: If SEO suite is requested, you may generate SEO types for that suite)`
+    : '';
 
   // Prompt engineering for structured output
   const prompt = `
     You are an expert QA Automation Engineer and Software Tester.
     
     Target Website: ${url}
-    Requested Artifact: ${artifactScope}
+    Requested Artifact Scope: ${artifactScope}
     
     **User Provided Test Data Configuration**:
     ${JSON.stringify(userTestData, null, 2)}
 
     ${authInstructions}
+    
+    ${targetFeaturePrompt}
+
+    ${allowedTypesPrompt}
+
+    ${seoInstructions}
 
     Task:
     1. Research this website using Google Search to understand its core functionality, target audience, and key features.
@@ -146,7 +185,7 @@ export const generateTestPlan = async (url: string, userTestData: TestDataItem[]
       - **Negative**: Error handling, invalid inputs, access denial.
       - **Accessibility**: Verify contrast, screen reader compatibility, keyboard navigation.
     - Assign priorities (Critical, High, Medium, Low).
-    - Provide detailed steps and expected results for each case (unless artifact is TEST_PLAN, then keep high-level).
+    - Provide detailed steps and expected results for each case (unless scope is PLAN_ONLY).
     - **CRITICAL**: Use the **User Provided Test Data** in the 'testData' field of your generated test cases. Map the provided values to the relevant tests. 
     - You can also add other inferred test data if needed.
     - **SECURITY**: Ensure sensitive fields are marked correctly in the output.
@@ -166,9 +205,12 @@ export const generateTestPlan = async (url: string, userTestData: TestDataItem[]
       "risks": "Potential project or product risks",
       "tools": "Suggested tools (e.g., Selenium, AXE, Burp Suite)",
       "authAnalysis": {
-         "used": boolean, // true if authenticated scenarios were generated using provided data
+         "used": boolean, 
          "message": "Short message explaining if the login info worked or why it was skipped."
       },
+      "checklist": [
+         { "id": "CHK-001", "category": "Homepage", "description": "Verify home page loads under 2s", "priority": "High", "type": "Performance" }
+      ],
       "suites": [
         {
           "suiteName": "Name of the suite",
@@ -180,7 +222,7 @@ export const generateTestPlan = async (url: string, userTestData: TestDataItem[]
               "title": "Concise title",
               "description": "Objective of the test",
               "preconditions": "Start at ${url}...",
-              "type": "Functional" | "UI/UX" | "Security" | "Performance" | "Accessibility" | "Edge Case",
+              "type": "Functional" | "UI/UX" | "Security" | "Performance" | "Accessibility" | "Edge Case" | "SEO",
               "scenarioType": "Positive" | "Negative" | "Boundary",
               "priority": "Critical" | "High" | "Medium" | "Low",
               "testData": [
@@ -238,6 +280,184 @@ export const generateTestPlan = async (url: string, userTestData: TestDataItem[]
   }
 };
 
+export const generateImprovementCases = async (url: string, plan: TestPlan, metricCategory: string): Promise<TestSuite> => {
+  const ai = getAiClient();
+
+  const prompt = `
+    You are a Senior QA Architect.
+    
+    Context:
+    We have generated a test plan for ${url}.
+    The Quality Metrics analysis indicates that the "${metricCategory}" coverage is insufficient or could be improved.
+    
+    Current Plan Summary: ${plan.summary}
+    Existing Suites: ${plan.suites.map(s => s.suiteName).join(', ')}
+    
+    Task:
+    Generate a NEW Test Suite specifically containing 3-5 high-value test cases to improve the "${metricCategory}" score.
+    
+    Requirements:
+    - Suite Name: "${metricCategory} Improvements"
+    - Cases must be specific to ${metricCategory} (e.g. if Security, generate XSS/Injection tests; if Usability, generate Navigation/Feedback tests).
+    - Do NOT duplicate existing scenarios.
+    - Provide detailed steps and expected results.
+    - Precondition: "Navigate to ${url}".
+    
+    Output:
+    Strict JSON object matching the TestSuite interface.
+    {
+      "suiteName": "${metricCategory} Improvements",
+      "description": "Targeted test cases to improve ${metricCategory} coverage metrics.",
+      "cases": [ ... ]
+    }
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-preview',
+      contents: prompt,
+      config: {
+        thinkingConfig: { thinkingBudget: 8000 },
+      }
+    });
+
+    const text = response.text;
+    if (!text) throw new Error("No response.");
+    return extractJson(text);
+  } catch (error) {
+    console.error(`Error generating ${metricCategory} improvements:`, error);
+    throw error;
+  }
+};
+
+export const generateChecklist = async (url: string, planContext?: TestPlan, count: number = 20, typeFilter?: string, existingIds?: string[], featureFocus?: string): Promise<ChecklistItem[]> => {
+  const ai = getAiClient();
+
+  // If we have a plan, use it as context to generate a better checklist
+  const contextPrompt = planContext 
+    ? `Context: A test plan has already been generated with suites: ${planContext.suites.map(s => s.suiteName).join(', ')}.`
+    : `Context: No existing test plan provided.`;
+
+  const typeInstruction = typeFilter && typeFilter !== 'ALL'
+    ? `**STRICT REQUIREMENT**: Generate ONLY checklist items related to "${typeFilter}". Do not include other types.`
+    : `Generate a mix of test types (Functional, UI/UX, Security, Performance).`;
+
+  const featureInstruction = featureFocus && featureFocus !== 'ALL'
+    ? `**STRICT FEATURE FOCUS**: You must ONLY generate checklist items specifically for the "${featureFocus}" feature/suite. 
+       Do not generate items for other parts of the application.
+       Set the "category" of ALL returned items to exactly "${featureFocus}".`
+    : `Assign a "category" to each item based on the feature or page it tests (e.g., "Login", "Search", "Checkout", "General").`;
+
+  const existingIdsPrompt = existingIds && existingIds.length > 0
+    ? `**IMPORTANT**: The following IDs already exist: ${existingIds.join(', ')}. You MUST NOT reuse these IDs. Generate new, unique IDs (e.g. continue the sequence or use a new prefix).`
+    : '';
+
+  const prompt = `
+    You are a QA Lead.
+    
+    Task: Generate a comprehensive "Exploratory Testing Checklist" for the website ${url}.
+    
+    ${contextPrompt}
+    
+    ${typeInstruction}
+
+    ${featureInstruction}
+
+    ${existingIdsPrompt}
+    
+    Requirements:
+    - Generate EXACTLY ${count} NEW concise, actionable checklist items.
+    - These should be "sanity checks" or "quick verifications" a manual tester would do.
+    - AUTOMATICALLY assign the correct "type" (Functional, UI/UX, Security, Performance, Accessibility, Edge Case).
+    - AUTOMATICALLY assign the correct "priority" (Critical, High, Medium, Low) based on impact.
+    - **CATEGORIZATION**: Follow the Feature Focus instruction above. If no specific feature is requested, categorize logically.
+    - If there is an existing checklist (not provided here, but assume adding to one), ensure these are unique or cover new ground.
+    
+    Output:
+    Strict JSON array of ChecklistItem objects:
+    [
+      { "id": "CHK-001", "category": "Feature Name", "description": "...", "priority": "Critical" | "High" | "Medium" | "Low", "type": "Functional" | "UI/UX" | "Security" | "Performance" | "Accessibility" | "Edge Case" }
+    ]
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview', // Flash is sufficient for simple checklists
+      contents: prompt
+    });
+
+    const text = response.text || '[]';
+    return extractJson(text);
+  } catch (error) {
+    console.error("Error generating checklist:", error);
+    throw error;
+  }
+};
+
+export const generateQualityMetrics = async (plan: TestPlan): Promise<QualityReport> => {
+  const ai = getAiClient();
+
+  const prompt = `
+    You are a Software Quality Assurance Architect.
+    
+    Task: Evaluate the expected software quality of the target application based on the generated Test Plan coverage and requirements.
+    Target Website: ${plan.websiteUrl}
+    
+    Test Plan Context:
+    - Summary: ${plan.summary}
+    - Suites: ${plan.suites.map(s => `${s.suiteName} (${s.cases.length} cases)`).join(', ')}
+    - Risks: ${plan.risks}
+    
+    Action:
+    Analyze the test plan against ISO 25010 Software Quality Standards. 
+    Estimate a score (0-100) for each quality attribute based on the *depth of testing proposed* and the *likely complexity* of the application.
+    
+    Attributes to Evaluate:
+    1. Functional Suitability (Completeness, Correctness)
+    2. Performance Efficiency (Time behavior, Resource utilization)
+    3. Compatibility (Browsers, Devices)
+    4. Usability (Learnability, User Error Protection, UI Aesthetics)
+    5. Reliability (Availability, Fault Tolerance)
+    6. Security (Confidentiality, Integrity)
+    7. Maintainability (Modularity, Reusability - inferred)
+    8. Portability (Adaptability)
+    9. SEO Optimization (Discoverability, Relevance)
+
+    Output:
+    Strict JSON object matching the QualityReport interface.
+    {
+      "overallScore": number, // Average of metrics
+      "timestamp": ${Date.now()},
+      "executiveSummary": "A detailed paragraph summarizing the overall quality posture and major areas of concern.",
+      "metrics": [
+        { 
+          "category": "Functional Suitability", 
+          "score": number, 
+          "reasoning": "Why this score? Refrence specific suites or missing coverage.", 
+          "improvements": ["Specific suggestion 1", "Specific suggestion 2"] 
+        },
+        ... (repeat for all 9 categories)
+      ]
+    }
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-preview', // Pro for analysis
+      contents: prompt,
+      config: {
+        thinkingConfig: { thinkingBudget: 8000 },
+      }
+    });
+
+    const text = response.text || '';
+    return extractJson(text);
+  } catch (error) {
+    console.error("Error generating quality metrics:", error);
+    throw error;
+  }
+};
+
 export const generateMoreTestCases = async (url: string, suite: TestSuite, userTestData: TestDataItem[], focusType?: string, count: number = 3): Promise<TestCase[]> => {
   const ai = getAiClient();
 
@@ -263,6 +483,10 @@ export const generateMoreTestCases = async (url: string, suite: TestSuite, userT
     
     Requirements:
     - Generate EXACTLY ${count} test cases.
+    - **STRICT RELEVANCE**: All generated cases MUST be strictly related to the feature "${suite.suiteName}".
+      - Do NOT generate generic tests (e.g. "Check footer", "Verify broken links") unless they specifically relate to this feature.
+      - If the suite is "Login", do NOT generate "Search" tests.
+      - If the suite is "SEO", do NOT generate functional checkout tests.
     - Do NOT duplicate existing cases.
     - Classify each with "scenarioType".
     - **STEPS**: You MUST generate detailed test steps (action, expected) for every test case. Do not return empty steps.
@@ -416,6 +640,10 @@ export const generateSuiteCypressScript = async (url: string, suite: TestSuite):
   // Filter for cases that have steps
   const casesWithSteps = suite.cases.filter(c => c.steps && c.steps.length > 0);
 
+  if (casesWithSteps.length === 0) {
+    return `// No test cases with steps found in suite: ${suite.suiteName}`;
+  }
+
   const prompt = `
     You are an expert QA Automation Engineer specialized in Cypress.
     
@@ -448,14 +676,15 @@ export const generateSuiteCypressScript = async (url: string, suite: TestSuite):
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview', // Use Pro for larger context generation
-      contents: prompt,
-      config: {
-        thinkingConfig: { thinkingBudget: 8000 },
-      }
+      model: 'gemini-2.5-flash', // Switched from 3-pro for reliability on structured code generation
+      contents: prompt
     });
 
     let text = response.text || '';
+    if (!text) {
+       console.error("Empty response for suite generation");
+       return "// Failed to generate script content. AI returned empty response.";
+    }
     text = text.replace(/^```(javascript|typescript|js|ts)?\n/, '').replace(/```$/, '');
     return text;
   } catch (error) {

@@ -13,7 +13,6 @@ interface SidebarProps {
   currentUser: User | null;
   currentView: string;
   onChangeView: (view: any) => void;
-  onLogout: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
@@ -26,8 +25,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onNewSession,
   currentUser,
   currentView,
-  onChangeView,
-  onLogout
+  onChangeView
 }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -74,8 +72,6 @@ const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
-  if (!currentUser) return null;
-
   return (
     <>
       {/* Mobile Overlay */}
@@ -96,15 +92,12 @@ const Sidebar: React.FC<SidebarProps> = ({
         `}
       >
         <div className="h-16 flex items-center px-4 border-b border-slate-200 dark:border-slate-800 flex-shrink-0 min-w-[16rem] gap-3">
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white ${currentUser.role === 'ADMIN' ? 'bg-purple-600' : 'bg-slate-400'}`}>
-            {currentUser.name.charAt(0).toUpperCase()}
+          <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white bg-gradient-to-br from-blue-500 to-purple-600">
+             QA
           </div>
           <div className="flex-1 truncate">
-            <div className="flex items-center gap-2">
-               <h2 className="font-bold text-sm text-slate-800 dark:text-slate-100 truncate">{currentUser.name}</h2>
-               {currentUser.role === 'ADMIN' && <span className="text-[9px] bg-purple-100 text-purple-700 px-1 rounded font-bold border border-purple-200">ADMIN</span>}
-            </div>
-            <p className="text-[10px] text-slate-500 truncate">{currentUser.email}</p>
+            <h2 className="font-bold text-sm text-slate-800 dark:text-slate-100 truncate">Test Workspace</h2>
+            <p className="text-[10px] text-slate-500 truncate">Guest Mode</p>
           </div>
         </div>
 
@@ -113,20 +106,6 @@ const Sidebar: React.FC<SidebarProps> = ({
            {/* Navigation Links */}
            <div className="p-3 space-y-1 border-b border-slate-100 dark:border-slate-800">
               
-              {/* ADMIN DASHBOARD LINK */}
-              {currentUser.role === 'ADMIN' && (
-                <button 
-                  onClick={() => { onChangeView('ADMIN'); if(window.innerWidth < 1024) toggleSidebar(); }}
-                  className={`w-full text-left px-3 py-2 mb-2 rounded-lg text-sm font-medium flex items-center gap-3 transition-colors ${currentView === 'ADMIN' ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  Admin Dashboard
-                </button>
-              )}
-
               <button 
                 onClick={() => { onChangeView('GENERATOR'); if(window.innerWidth < 1024) toggleSidebar(); }}
                 className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-3 transition-colors ${currentView === 'GENERATOR' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
@@ -168,10 +147,30 @@ const Sidebar: React.FC<SidebarProps> = ({
                  </svg>
                 Test Cases
               </button>
+              
+              <button 
+                onClick={() => { onChangeView('CHECKLISTS'); if(window.innerWidth < 1024) toggleSidebar(); }}
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-3 transition-colors ${currentView === 'CHECKLISTS' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+              >
+                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                 </svg>
+                Test Checklists
+              </button>
 
               <div className="pt-2 pb-1 px-3 text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500 tracking-wider">
-                Scripts
+                Analysis & Ops
               </div>
+
+              <button 
+                onClick={() => { onChangeView('METRICS'); if(window.innerWidth < 1024) toggleSidebar(); }}
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-3 transition-colors ${currentView === 'METRICS' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+              >
+                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                 </svg>
+                Quality Metrics
+              </button>
 
               <button 
                 onClick={() => { onChangeView('SCRIPTS'); if(window.innerWidth < 1024) toggleSidebar(); }}
@@ -257,18 +256,6 @@ const Sidebar: React.FC<SidebarProps> = ({
                  </div>
                ))}
            </div>
-        </div>
-        
-        <div className="p-4 border-t border-slate-200 dark:border-slate-800 min-w-[16rem]">
-            <button 
-              onClick={onLogout}
-              className="w-full flex items-center justify-center px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-            >
-               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-               </svg>
-               Sign Out
-            </button>
         </div>
       </aside>
     </>

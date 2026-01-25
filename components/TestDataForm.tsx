@@ -1,17 +1,18 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { TestInputRequirement, TestDataItem, ArtifactScope, TestDataType } from '../types';
+import { TestInputRequirement, TestDataItem, ArtifactScope, TestDataType, GenerationConfig } from '../types';
 
 interface TestDataFormProps {
   requirements: TestInputRequirement[];
   initialData: TestDataItem[];
   initialScope: ArtifactScope;
-  onGenerate: (data: TestDataItem[], artifactScope: ArtifactScope) => void;
+  initialConfig?: GenerationConfig;
+  onGenerate: (data: TestDataItem[], artifactScope: ArtifactScope, config?: GenerationConfig) => void;
   onCancel: () => void;
   isLoading: boolean;
 }
 
-const TestDataForm: React.FC<TestDataFormProps> = ({ requirements, initialData, initialScope, onGenerate, onCancel, isLoading }) => {
+const TestDataForm: React.FC<TestDataFormProps> = ({ requirements, initialData, initialScope, initialConfig, onGenerate, onCancel, isLoading }) => {
   const [formData, setFormData] = useState<TestDataItem[]>([]);
   const [customFields, setCustomFields] = useState<TestDataItem[]>([]);
   const [artifactScope, setArtifactScope] = useState<ArtifactScope>('ALL');
@@ -115,7 +116,7 @@ const TestDataForm: React.FC<TestDataFormProps> = ({ requirements, initialData, 
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onGenerate([...formData, ...customFields], artifactScope);
+    onGenerate([...formData, ...customFields], artifactScope, initialConfig);
   };
 
   const renderInput = (field: TestDataItem, idx: number, isCustom: boolean, options?: string[]) => {
@@ -175,27 +176,27 @@ const TestDataForm: React.FC<TestDataFormProps> = ({ requirements, initialData, 
          );
       }
 
-      // 4. Secret / Text
+      // 4. Secret / Text with Slider Toggle
       const isSensitive = field.type === 'secret' || field.isSensitive;
       return (
-        <div className="relative">
+        <div className="flex items-center gap-3 w-full">
             <input
                 type={isSensitive ? "password" : "text"}
                 value={field.value}
                 onChange={(e) => handleChange(idx, e.target.value, isCustom)}
-                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-slate-800 dark:text-slate-100 transition-colors"
+                className="flex-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-slate-800 dark:text-slate-100 transition-colors"
                 placeholder={isSensitive ? "Hidden Value" : "Value"}
             />
-            <button
-                type="button"
-                onClick={() => toggleSensitivity(idx, isCustom)}
-                className={`absolute right-2 top-2.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 ${field.isSensitive ? 'text-blue-500' : ''}`}
-                title="Toggle Masking"
-            >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-                </svg>
-            </button>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0" title="Toggle Hidden Value">
+              <input 
+                type="checkbox" 
+                checked={field.isSensitive} 
+                onChange={() => toggleSensitivity(idx, isCustom)} 
+                className="sr-only peer" 
+              />
+              <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+              <span className="sr-only">Hidden</span>
+            </label>
         </div>
       );
   };
@@ -222,6 +223,13 @@ const TestDataForm: React.FC<TestDataFormProps> = ({ requirements, initialData, 
     });
   }, [groupedRequirements]);
 
+  const RadioOption = ({ value, label, checked }: { value: ArtifactScope, label: string, checked: boolean }) => (
+    <label className={`cursor-pointer border p-3 rounded-lg flex items-center gap-3 transition-colors ${checked ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 text-blue-800 dark:text-blue-300' : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'}`}>
+        <input type="radio" name="artifactScope" value={value} checked={checked} onChange={() => setArtifactScope(value)} className="text-blue-600 focus:ring-blue-500 h-4 w-4" />
+        <div><span className="font-bold text-sm block">{label}</span></div>
+    </label>
+  );
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-8 animate-fade-in">
       <div className="bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden transition-colors duration-300">
@@ -241,16 +249,25 @@ const TestDataForm: React.FC<TestDataFormProps> = ({ requirements, initialData, 
           
           {/* Artifact Selection */}
           <div className="space-y-3 pb-6 border-b border-slate-100 dark:border-slate-800">
-             <h3 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Output Artifact</h3>
+             <h3 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Output Artifacts</h3>
              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-               {/* ... (Previous artifact options remain same, just condensed for brevity) ... */}
-               <label className={`cursor-pointer border p-3 rounded-lg flex items-center gap-3 transition-colors ${artifactScope === 'ALL' ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 text-blue-800 dark:text-blue-300' : 'hover:bg-slate-50 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'}`}>
-                 <input type="radio" name="artifactScope" value="ALL" checked={artifactScope === 'ALL'} onChange={() => setArtifactScope('ALL')} className="text-blue-600 focus:ring-blue-500 h-4 w-4" />
-                 <div><span className="font-bold text-sm block">All Artifacts</span></div>
-               </label>
-               {/* Add other options similarly */}
+               <RadioOption value="PLAN_ONLY" label="Test Plan Only" checked={artifactScope === 'PLAN_ONLY'} />
+               <RadioOption value="SUITES_CASES" label="Suites & Cases Only" checked={artifactScope === 'SUITES_CASES'} />
+               <RadioOption value="PLAN_SUITES_CASES" label="Plan, Suites & Cases" checked={artifactScope === 'PLAN_SUITES_CASES'} />
+               <RadioOption value="PLAN_SUITES_CHECKLIST" label="Plan, Suites & Checklist" checked={artifactScope === 'PLAN_SUITES_CHECKLIST'} />
+               <RadioOption value="CHECKLIST_ONLY" label="Test Checklist Only" checked={artifactScope === 'CHECKLIST_ONLY'} />
+               <RadioOption value="ALL" label="Generate All Artifacts" checked={artifactScope === 'ALL'} />
              </div>
           </div>
+          
+          {/* Config Summary if present */}
+          {initialConfig && (
+              <div className="text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 p-3 rounded border border-slate-100 dark:border-slate-700">
+                  <div className="font-bold uppercase mb-2">Configuration: </div>
+                  {initialConfig.targetFeatures && initialConfig.targetFeatures.length > 0 && <div className="mb-1">Targeting: <span className="font-medium text-blue-600 dark:text-blue-400">{initialConfig.targetFeatures.join(', ')}</span></div>}
+                  <div>Types: <span className="font-medium text-slate-700 dark:text-slate-300">{initialConfig.includedTypes.join(', ')}</span></div>
+              </div>
+          )}
 
           {/* Grouped Requirements */}
           {formData.length > 0 && sortedGroupKeys.map((groupName) => (
@@ -260,10 +277,13 @@ const TestDataForm: React.FC<TestDataFormProps> = ({ requirements, initialData, 
                  {/login|auth|credential/i.test(groupName) && <span className="ml-2 text-[10px] bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400 px-1.5 py-0.5 rounded-full font-bold">PRIORITY</span>}
                </h3>
                {groupedRequirements[groupName].map(idx => (
-                  <div key={idx} className="flex flex-col sm:flex-row gap-3 items-start sm:items-center p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-800">
-                       <div className="w-full sm:w-1/3">
-                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 truncate" title={formData[idx].key}>{formData[idx].key}</label>
+                  <div key={idx} className="flex flex-col sm:flex-row gap-3 items-start sm:items-center p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-800 relative group">
+                       <div className="w-full sm:w-1/3 relative">
+                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 truncate pr-6" title={formData[idx].key}>
+                              {formData[idx].key}
+                          </label>
                           <span className="text-xs text-slate-500 dark:text-slate-400">{requirements[idx]?.description}</span>
+                          <span className="absolute right-0 top-0 text-[10px] bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-1.5 py-0.5 rounded opacity-80" title="Detected from website context">Auto</span>
                        </div>
                        <div className="flex-1 w-full relative">
                           {renderInput(formData[idx], idx, false, requirements[idx].options)}

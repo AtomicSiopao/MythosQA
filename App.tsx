@@ -5,19 +5,25 @@ import TestPlanDisplay from './components/TestPlanDisplay';
 import LoadingScreen from './components/LoadingScreen';
 import TestDataForm from './components/TestDataForm';
 import Sidebar from './components/Sidebar';
-import AuthScreen from './components/AuthScreen';
 import ArtifactManager from './components/ArtifactManager';
 import ScriptGenerator from './components/ScriptGenerator';
-import AdminDashboard from './components/AdminDashboard';
-import { TestPlan, TestRequirementsAnalysis, TestDataItem, ArtifactScope, TestSuite, TestCase, SavedSession, User, GeneratedScript } from './types';
+import QualityMetricsReport from './components/QualityMetricsReport';
+import { TestPlan, TestRequirementsAnalysis, TestDataItem, ArtifactScope, SavedSession, User, GeneratedScript, GenerationConfig, TestCase } from './types';
 import { generateTestPlan, analyzeRequirements, generateMoreTestCases, regenerateTestCase } from './services/geminiService';
 
 type GeneratorState = 'IDLE' | 'ANALYZING' | 'CONFIGURING' | 'GENERATING' | 'DISPLAY';
-type AppView = 'GENERATOR' | 'PLANS' | 'SUITES' | 'CASES' | 'SCRIPTS' | 'ADMIN';
+type AppView = 'GENERATOR' | 'PLANS' | 'SUITES' | 'CASES' | 'CHECKLISTS' | 'SCRIPTS' | 'METRICS';
 
 const App: React.FC = () => {
-  // Global App State
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  // Global App State - Default to Guest
+  const [currentUser] = useState<User>({
+    id: 'guest_user',
+    name: 'Guest Tester',
+    email: 'guest@beforeeach.ai',
+    role: 'USER',
+    createdAt: Date.now()
+  });
+  
   const [currentView, setCurrentView] = useState<AppView>('GENERATOR');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -31,10 +37,10 @@ const App: React.FC = () => {
   const [requirements, setRequirements] = useState<TestRequirementsAnalysis | null>(null);
   const [testData, setTestData] = useState<TestDataItem[]>([]);
   const [artifactScope, setArtifactScope] = useState<ArtifactScope>('ALL');
+  const [generationConfig, setGenerationConfig] = useState<GenerationConfig | undefined>(undefined);
   const [testPlan, setTestPlan] = useState<TestPlan | null>(null);
   const [error, setError] = useState<string | null>(null);
   
-  // Changed to array to support multiple concurrent generations
   const [generatingSuiteIndices, setGeneratingSuiteIndices] = useState<number[]>([]);
   
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -46,24 +52,9 @@ const App: React.FC = () => {
       setIsDarkMode(true);
     }
 
-    // Load User
-    try {
-      const storedUser = localStorage.getItem('mythos_current_user');
-      if (storedUser) {
-        const user = JSON.parse(storedUser);
-        setCurrentUser(user);
-        // If restoring session and user is admin, default to admin view if not set
-        if (user.role === 'ADMIN') {
-           // We don't force it on refresh to allow navigation, but handleLogin forces it
-        }
-      }
-    } catch (e) {
-      console.error("Failed to load user", e);
-    }
-
     // Load Sessions
     try {
-      const storedSessions = localStorage.getItem('mythos_saved_sessions');
+      const storedSessions = localStorage.getItem('beforeeach_saved_sessions');
       if (storedSessions) {
         setSavedSessions(JSON.parse(storedSessions));
       }
@@ -80,37 +71,16 @@ const App: React.FC = () => {
     }
   }, [isDarkMode]);
 
-  // --- Auth Handlers ---
-  const handleLogin = (user: User) => {
-    setCurrentUser(user);
-    localStorage.setItem('mythos_current_user', JSON.stringify(user));
-    
-    // REDIRECT ADMIN TO DASHBOARD
-    if (user.role === 'ADMIN') {
-      setCurrentView('ADMIN');
-    } else {
-      setCurrentView('GENERATOR');
-    }
-  };
-
-  const handleLogout = () => {
-    setCurrentUser(null);
-    localStorage.removeItem('mythos_current_user');
-    handleReset(); // Reset generator state
-  };
-
   // --- Session Data Handlers ---
   const userSessions = useMemo(() => {
-    if (!currentUser) return [];
-    // If Admin, show ALL sessions (optional feature for admin, but let's stick to personal for now to avoid clutter)
-    // Actually, typical SAAS admin dashboard manages users, but personal workspace shows own. 
-    // Let's keep it strictly own sessions for consistency unless we implement a "View User" feature.
-    return savedSessions.filter(s => s.userId === currentUser.id || !s.userId); 
-  }, [savedSessions, currentUser]);
+    return savedSessions; // Show all sessions since auth is removed
+  }, [savedSessions]);
+
+  const currentSession = useMemo(() => {
+    return userSessions.find(s => s.id === currentSessionId) || null;
+  }, [userSessions, currentSessionId]);
 
   const persistSessionUpdate = (updatedSession: SavedSession) => {
-    if (!currentUser) return;
-    
     // Ensure ownership
     const sessionToSave = { ...updatedSession, userId: currentUser.id };
 
@@ -123,7 +93,7 @@ const App: React.FC = () => {
       } else {
         newSessions = [sessionToSave, ...prev];
       }
-      localStorage.setItem('mythos_saved_sessions', JSON.stringify(newSessions));
+      localStorage.setItem('beforeeach_saved_sessions', JSON.stringify(newSessions));
       return newSessions;
     });
   };
@@ -131,7 +101,7 @@ const App: React.FC = () => {
   const deleteSession = (sessionId: string) => {
     const updatedSessions = savedSessions.filter(s => s.id !== sessionId);
     setSavedSessions(updatedSessions);
-    localStorage.setItem('mythos_saved_sessions', JSON.stringify(updatedSessions));
+    localStorage.setItem('beforeeach_saved_sessions', JSON.stringify(updatedSessions));
     if (currentSessionId === sessionId) {
       handleReset();
     }
@@ -146,14 +116,14 @@ const App: React.FC = () => {
 
   // --- Generator Logic ---
 
-  const handleAnalyze = async (inputUrl: string, initialCredentialData?: TestDataItem[]) => {
-    if (!currentUser) return;
+  const handleAnalyze = async (inputUrl: string, initialCredentialData?: TestDataItem[], config?: GenerationConfig) => {
     setState('ANALYZING');
     setUrl(inputUrl);
     setError(null);
     
     const initialData = initialCredentialData || [];
     setTestData(initialData);
+    setGenerationConfig(config);
 
     // Auto Save Start
     const newSessionId = Date.now().toString();
@@ -171,7 +141,8 @@ const App: React.FC = () => {
       plan: null,
       testData: initialData,
       requirements: null,
-      artifactScope: 'ALL'
+      artifactScope: 'ALL',
+      generationConfig: config
     };
     persistSessionUpdate(newSession);
 
@@ -187,24 +158,27 @@ const App: React.FC = () => {
     }
   };
 
-  const handleGenerate = async (data: TestDataItem[], scope: ArtifactScope) => {
+  const handleGenerate = async (data: TestDataItem[], scope: ArtifactScope, config?: GenerationConfig) => {
     setTestData(data);
     setArtifactScope(scope);
+    if(config) setGenerationConfig(config);
+    
     setState('GENERATING');
     setError(null);
     try {
-      const plan = await generateTestPlan(url, data, scope);
+      const plan = await generateTestPlan(url, data, scope, config || generationConfig);
       setTestPlan(plan);
       setState('DISPLAY');
 
       if (currentSessionId) {
-        const currentSession = userSessions.find(s => s.id === currentSessionId);
-        if (currentSession) {
+        const session = userSessions.find(s => s.id === currentSessionId);
+        if (session) {
           persistSessionUpdate({
-            ...currentSession,
+            ...session,
             testData: data,
             artifactScope: scope,
             plan: plan,
+            generationConfig: config || generationConfig,
             timestamp: Date.now()
           });
         }
@@ -218,26 +192,24 @@ const App: React.FC = () => {
   const handleGenerateMore = async (suiteIndex: number, focusType?: string, count: number = 3) => {
     if (!testPlan || !currentSessionId) return;
     
-    // Add this index to active generations
     setGeneratingSuiteIndices(prev => [...prev, suiteIndex]);
     
     const suite = testPlan.suites[suiteIndex];
     try {
-      const newCases = await generateMoreTestCases(url, suite, testData, focusType, count);
+      let newCases = await generateMoreTestCases(url, suite, testData, focusType, count);
       
-      // Update state securely with functional update to avoid race conditions with multiple generations
+      // Mark as new for highlighting
+      newCases = newCases.map(c => ({ ...c, isNew: true }));
+
       setTestPlan(prevPlan => {
         if (!prevPlan) return null;
         const updatedPlan = { ...prevPlan };
-        // Create a new array for suites to ensure immutability
         updatedPlan.suites = [...prevPlan.suites];
-        // Append new cases
         updatedPlan.suites[suiteIndex] = {
            ...updatedPlan.suites[suiteIndex],
            cases: [...updatedPlan.suites[suiteIndex].cases, ...newCases]
         };
         
-        // Persist
         const currentSession = userSessions.find(s => s.id === currentSessionId);
         if (currentSession) persistSessionUpdate({ ...currentSession, plan: updatedPlan });
         
@@ -248,7 +220,6 @@ const App: React.FC = () => {
       console.error(e);
       alert("Failed to generate more cases.");
     } finally {
-      // Remove this index from active generations
       setGeneratingSuiteIndices(prev => prev.filter(i => i !== suiteIndex));
     }
   };
@@ -259,6 +230,9 @@ const App: React.FC = () => {
     const originalCase = suite.cases[caseIndex];
     try {
        const updatedCase = await regenerateTestCase(url, originalCase, newTestData);
+       // Preserve isNew status if it was new
+       updatedCase.isNew = originalCase.isNew;
+       
        const updatedPlan = { ...testPlan };
        updatedPlan.suites[suiteIndex].cases[caseIndex] = updatedCase;
        setTestPlan(updatedPlan);
@@ -289,6 +263,29 @@ const App: React.FC = () => {
     }
   };
 
+  const handleDeleteSuite = (suiteIndex: number) => {
+    if (!testPlan || !currentSessionId) return;
+    const newPlan = { ...testPlan };
+    newPlan.suites = newPlan.suites.filter((_, idx) => idx !== suiteIndex);
+    setTestPlan(newPlan);
+    
+    const currentSession = userSessions.find(s => s.id === currentSessionId);
+    if (currentSession) persistSessionUpdate({ ...currentSession, plan: newPlan });
+  };
+
+  const handleDeleteCase = (suiteIndex: number, caseIndex: number) => {
+    if (!testPlan || !currentSessionId) return;
+    const newPlan = { ...testPlan };
+    newPlan.suites[suiteIndex] = {
+      ...newPlan.suites[suiteIndex],
+      cases: newPlan.suites[suiteIndex].cases.filter((_, idx) => idx !== caseIndex)
+    };
+    setTestPlan(newPlan);
+    
+    const currentSession = userSessions.find(s => s.id === currentSessionId);
+    if (currentSession) persistSessionUpdate({ ...currentSession, plan: newPlan });
+  };
+
   const handleSaveScript = (sessionId: string, script: GeneratedScript) => {
     const session = userSessions.find(s => s.id === sessionId);
     if (session) {
@@ -306,6 +303,7 @@ const App: React.FC = () => {
     setRequirements(null);
     setTestData([]);
     setArtifactScope('ALL');
+    setGenerationConfig(undefined);
     setTestPlan(null);
     setError(null);
     setCurrentSessionId(null);
@@ -318,6 +316,7 @@ const App: React.FC = () => {
     setTestData(session.testData);
     setRequirements(session.requirements);
     setArtifactScope(session.artifactScope);
+    setGenerationConfig(session.generationConfig);
 
     if (session.plan) {
       setTestPlan(session.plan);
@@ -326,23 +325,18 @@ const App: React.FC = () => {
       setState('CONFIGURING');
     } else {
       setState('IDLE');
-      handleAnalyze(session.url, session.testData);
+      handleAnalyze(session.url, session.testData, session.generationConfig);
     }
     setCurrentView('GENERATOR');
   };
 
   const handleSaveSessionName = (name: string) => {
-    if (!currentSessionId || !currentUser) return;
+    if (!currentSessionId) return;
     const currentSession = userSessions.find(s => s.id === currentSessionId);
     if (currentSession) {
       persistSessionUpdate({ ...currentSession, name: name });
     }
   };
-
-  // If not logged in, show Auth
-  if (!currentUser) {
-    return <AuthScreen onLogin={handleLogin} />;
-  }
 
   return (
     <div className="h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-50 font-sans transition-colors duration-300 flex overflow-hidden">
@@ -358,7 +352,6 @@ const App: React.FC = () => {
         currentUser={currentUser}
         currentView={currentView}
         onChangeView={(view) => setCurrentView(view)}
-        onLogout={handleLogout}
       />
 
       <div className="flex-1 flex flex-col h-full overflow-hidden min-w-0 relative">
@@ -374,12 +367,9 @@ const App: React.FC = () => {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                     </svg>
                   </button>
-
-                  <div className="flex items-center gap-2 cursor-pointer group" onClick={handleReset}>
-                      <div className="w-9 h-9 bg-black rounded-lg flex items-center justify-center text-white shadow-sm transition-transform group-hover:scale-105 border border-slate-800">
-                          <span className="font-serif text-lg font-bold text-yellow-500">M</span>
-                      </div>
-                      <span className="font-bold text-lg tracking-tight text-slate-800 dark:text-white hidden sm:inline">Mythos<span className="text-yellow-600 dark:text-yellow-500">QA</span></span>
+                  <div className="font-bold text-xl tracking-tighter text-slate-800 dark:text-white cursor-pointer font-mono" onClick={handleReset}>
+                    before<span className="text-yellow-600 dark:text-yellow-500">Each</span>
+                    <span className="animate-blink inline-block w-2.5 h-5 ml-1 bg-slate-900 dark:bg-yellow-500 align-middle"></span>
                   </div>
               </div>
 
@@ -436,6 +426,7 @@ const App: React.FC = () => {
                   requirements={requirements.requirements} 
                   initialData={testData}
                   initialScope={artifactScope}
+                  initialConfig={generationConfig}
                   onGenerate={handleGenerate}
                   onCancel={testPlan ? () => setState('DISPLAY') : handleReset}
                   isLoading={false}
@@ -453,6 +444,8 @@ const App: React.FC = () => {
                   onUpdatePlan={handleUpdatePlan}
                   onRegenerateCase={handleRegenerateCase}
                   onUpdateTestCase={handleUpdateTestCase}
+                  onDeleteSuite={handleDeleteSuite}
+                  onDeleteCase={handleDeleteCase}
                   generatingSuiteIndices={generatingSuiteIndices}
                   onSaveSession={handleSaveSessionName}
                   onSaveScript={(script) => currentSessionId && handleSaveScript(currentSessionId, script)}
@@ -464,23 +457,31 @@ const App: React.FC = () => {
                sessions={userSessions}
                onSaveScript={handleSaveScript}
             />
-          ) : currentView === 'ADMIN' ? (
-            <AdminDashboard currentUser={currentUser} />
+          ) : currentView === 'METRICS' ? (
+            <QualityMetricsReport 
+               session={currentSession}
+               onUpdateSession={persistSessionUpdate}
+               onChangeView={setCurrentView}
+            />
           ) : (
             <ArtifactManager 
                sessions={userSessions} 
-               viewMode={currentView as any} // Cast for compatibility with Manager view types
+               viewMode={currentView as any}
                onUpdateSession={persistSessionUpdate}
                onNavigateToSession={handleLoadSession}
             />
           )}
 
-          {/* Footer - Only show on IDLE generator or Manager/Script Views */}
+          {/* Footer */}
           {(currentView !== 'GENERATOR' || state !== 'IDLE') && (
-             <footer className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-8 mt-auto transition-colors duration-300 flex-shrink-0">
-              <div className="max-w-7xl mx-auto px-4 text-center text-slate-400 dark:text-slate-600 text-sm flex flex-col items-center justify-center gap-2">
-                <p>© {new Date().getFullYear()} Mythos QA. Generated content may be inaccurate.</p>
+             <footer className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-4 mt-8 transition-colors duration-300 flex-shrink-0">
+              <div className="max-w-7xl mx-auto px-4 text-center text-slate-400 dark:text-slate-600 text-xs flex flex-row items-center justify-center gap-4">
+                <p>© {new Date().getFullYear()} beforeEach. Generated content may be inaccurate.</p>
+                <span className="text-slate-300 dark:text-slate-700">|</span>
                 <a href="https://github.com/AtomicSiopao/" target="_blank" rel="noopener noreferrer" className="flex items-center hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                  <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path fillRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clipRule="evenodd"></path>
+                  </svg>
                   AtomicSiopao
                 </a>
               </div>

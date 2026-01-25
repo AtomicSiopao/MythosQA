@@ -4,7 +4,7 @@ import { SavedSession, TestPlan, TestSuite, TestCase, TestPriority, TestType } f
 
 interface ArtifactManagerProps {
   sessions: SavedSession[];
-  viewMode: 'PLANS' | 'SUITES' | 'CASES';
+  viewMode: 'PLANS' | 'SUITES' | 'CASES' | 'CHECKLISTS';
   onUpdateSession: (updatedSession: SavedSession) => void;
   onNavigateToSession: (session: SavedSession) => void;
 }
@@ -35,6 +35,14 @@ const ArtifactManager: React.FC<ArtifactManagerProps> = ({ sessions, viewMode, o
       }
     });
     return suites;
+  }, [sessions, filterText]);
+
+  // --- CHECKLISTS VIEW ---
+  const allChecklists = useMemo(() => {
+    return sessions.filter(s => 
+      s.plan?.checklist && s.plan.checklist.length > 0 &&
+      (s.name.toLowerCase().includes(filterText.toLowerCase()) || s.url.toLowerCase().includes(filterText.toLowerCase()))
+    );
   }, [sessions, filterText]);
 
   // --- CASES VIEW ---
@@ -91,11 +99,13 @@ const ArtifactManager: React.FC<ArtifactManagerProps> = ({ sessions, viewMode, o
              {viewMode === 'PLANS' && 'Test Plans'}
              {viewMode === 'SUITES' && 'Test Suites'}
              {viewMode === 'CASES' && 'Test Cases'}
+             {viewMode === 'CHECKLISTS' && 'Test Checklists'}
            </h1>
            <p className="text-slate-500 dark:text-slate-400 text-sm">
              {viewMode === 'PLANS' && 'Manage high-level test plans and strategies'}
              {viewMode === 'SUITES' && 'Organize suites across all your projects'}
              {viewMode === 'CASES' && 'Granular view of all test cases'}
+             {viewMode === 'CHECKLISTS' && 'Quick verification lists for exploratory testing'}
            </p>
         </div>
         <div className="relative w-full sm:w-64">
@@ -176,6 +186,53 @@ const ArtifactManager: React.FC<ArtifactManagerProps> = ({ sessions, viewMode, o
                ))}
                {allSuites.length === 0 && (
                  <tr><td colSpan={4} className="px-6 py-8 text-center text-slate-400">No suites found.</td></tr>
+               )}
+             </tbody>
+           </table>
+        )}
+
+        {/* === CHECKLISTS LIST === */}
+        {viewMode === 'CHECKLISTS' && (
+           <table className="w-full text-left text-sm">
+             <thead className="bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 font-medium">
+               <tr>
+                 <th className="px-6 py-4">Project / Plan</th>
+                 <th className="px-6 py-4">Total Items</th>
+                 <th className="px-6 py-4">Completed</th>
+                 <th className="px-6 py-4 text-right">Actions</th>
+               </tr>
+             </thead>
+             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+               {allChecklists.map((session, idx) => {
+                 const total = session.plan?.checklist?.length || 0;
+                 const completed = session.plan?.checklist?.filter(i => i.isChecked).length || 0;
+                 const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+                 return (
+                   <tr key={`checklist-${session.id}-${idx}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                      <td className="px-6 py-4 font-medium text-slate-800 dark:text-slate-100">{session.name}</td>
+                      <td className="px-6 py-4 text-slate-500 dark:text-slate-400">{total} items</td>
+                      <td className="px-6 py-4">
+                         <div className="flex items-center gap-2">
+                            <div className="flex-1 w-24 h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                               <div className="h-full bg-blue-500" style={{ width: `${progress}%` }}></div>
+                            </div>
+                            <span className="text-xs text-slate-500">{progress}%</span>
+                         </div>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                         <button 
+                            onClick={() => onNavigateToSession(session)}
+                            className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 text-xs font-medium"
+                         >
+                           Open Checklist
+                         </button>
+                      </td>
+                   </tr>
+                 );
+               })}
+               {allChecklists.length === 0 && (
+                 <tr><td colSpan={4} className="px-6 py-8 text-center text-slate-400">No checklists found.</td></tr>
                )}
              </tbody>
            </table>

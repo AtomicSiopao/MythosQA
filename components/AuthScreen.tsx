@@ -33,10 +33,11 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
     setSuccessMsg(null);
 
     // --- HARDCODED ADMIN CHECK (Bypass 2FA for convenience or impl 2FA for them too) ---
-    if (email === 'admin@mythosqa.com' && password === 'Admin123!') {
+    // Password 'jamesbeforeeach@' stored as base64 to avoid plain text
+    if (email === 'admin@beforeeach.com' && btoa(password) === 'amFtZXNiZWZvcmVlYWNoQA==') {
       const adminUser: User = {
         id: 'admin-master-id',
-        email: 'admin@mythosqa.com',
+        email: 'admin@beforeeach.com',
         name: 'System Administrator',
         createdAt: Date.now(),
         role: 'ADMIN'
@@ -45,7 +46,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
       return;
     }
 
-    const storedUsersStr = localStorage.getItem('mythos_users');
+    const storedUsersStr = localStorage.getItem('beforeeach_users');
     const users: (User & { password: string })[] = storedUsersStr ? JSON.parse(storedUsersStr) : [];
 
     if (mode === 'LOGIN') {
@@ -56,7 +57,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
          setVerificationCode(code);
          setStep('VERIFICATION');
          // Simulate sending
-         setTimeout(() => alert(`[MYTHOS QA SECURITY]\n\nYour 2FA Verification Code is: ${code}`), 500);
+         setTimeout(() => alert(`[BEFORE EACH SECURITY]\n\nYour 2FA Verification Code is: ${code}`), 500);
       } else {
         setError('Invalid email or password.');
       }
@@ -70,7 +71,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
       const code = generateCode();
       setVerificationCode(code);
       setStep('VERIFICATION');
-      setTimeout(() => alert(`[MYTHOS QA SECURITY]\n\nYour Registration Verification Code is: ${code}`), 500);
+      setTimeout(() => alert(`[BEFORE EACH SECURITY]\n\nYour Registration Verification Code is: ${code}`), 500);
     }
   };
 
@@ -84,7 +85,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
     }
 
     // Code is valid
-    const storedUsersStr = localStorage.getItem('mythos_users');
+    const storedUsersStr = localStorage.getItem('beforeeach_users');
     const users: (User & { password: string })[] = storedUsersStr ? JSON.parse(storedUsersStr) : [];
 
     if (mode === 'LOGIN') {
@@ -106,7 +107,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
             role: 'USER' as const
         };
         
-        localStorage.setItem('mythos_users', JSON.stringify([...users, newUser]));
+        localStorage.setItem('beforeeach_users', JSON.stringify([...users, newUser]));
         
         // Reset to Login screen as requested "Require users to login after successful registration"
         setSuccessMsg("Registration successful! Please log in with your new credentials.");
@@ -131,10 +132,10 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
       <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-fade-in">
         <div className="p-8 text-center">
           <div className="w-16 h-16 bg-black rounded-xl flex items-center justify-center text-white shadow-lg mx-auto mb-6 border border-slate-800">
-             <span className="font-serif text-3xl font-bold text-yellow-500">M</span>
+             <span className="font-serif text-3xl font-bold text-yellow-500">B</span>
           </div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
-            Welcome to Mythos<span className="text-yellow-600 dark:text-yellow-500">QA</span>
+            Welcome to before<span className="text-yellow-600 dark:text-yellow-500">Each</span>
           </h1>
           <p className="text-slate-500 dark:text-slate-400">
             {step === 'VERIFICATION' 
